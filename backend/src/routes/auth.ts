@@ -1,43 +1,11 @@
-import express from 'express';
+import express, { Response, NextFunction } from 'express';
 import { z } from 'zod';
 import prisma from '../lib/prisma';
 import { hashPassword, comparePassword, generateToken } from '../lib/auth';
 import { createError } from '../middleware/errorHandler';
-import { authenticate, AuthRequest } from '../middleware/auth';
+import { authenticate, AuthRequest, requireAdmin } from '../middleware/auth';
 
 const router = express.Router();
-
-/**
- * @swagger
- * /auth/login:
- *   post:
- *     summary: User login
- *     description: Authenticate user with email and password
- *     tags: [Authentication]
- *     security: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/LoginRequest'
- *           example:
- *             email: "admin@toystore.com"
- *             password: "admin123"
- *     responses:
- *       200:
- *         description: Login successful
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/LoginResponse'
- *       401:
- *         description: Invalid credentials
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
- */
 
 // Validation schemas
 const loginSchema = z.object({
@@ -49,6 +17,21 @@ const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
   name: z.string().min(1),
+});
+
+const createUserSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6),
+  name: z.string().min(1),
+  isAdmin: z.boolean().optional(),
+});
+
+const updateUserSchema = z.object({
+  email: z.string().email().optional(),
+  name: z.string().min(1).optional(),
+  telephone: z.string().optional(),
+  isAdmin: z.boolean().optional(),
+  isActive: z.boolean().optional(),
 });
 
 // POST /auth/login
@@ -75,20 +58,18 @@ router.post('/login', async (req, res, next): Promise<void> => {
       return;
     }
 
-    // Try database lookup (will fail gracefully if DB not connected)
+    // Try database lookup
     try {
       const user = await prisma.user.findUnique({
         where: { email },
       });
 
       if (user) {
-        // Verify password
         const isValidPassword = await comparePassword(password, user.hashedPassword);
         if (!isValidPassword) {
           throw createError('Invalid credentials', 401);
         }
 
-        // Generate token
         const token = generateToken({
           id: user.id,
           email: user.email,
@@ -109,7 +90,6 @@ router.post('/login', async (req, res, next): Promise<void> => {
       console.log('Database not available, using mock auth');
     }
 
-    // If no user found
     throw createError('Invalid credentials', 401);
   } catch (error) {
     next(error);
@@ -121,7 +101,6 @@ router.post('/register', async (req, res, next) => {
   try {
     const { email, password, name } = registerSchema.parse(req.body);
 
-    // Check if user already exists
     const existingUser = await prisma.user.findUnique({
       where: { email },
     });
@@ -130,10 +109,8 @@ router.post('/register', async (req, res, next) => {
       throw createError('User already exists', 409);
     }
 
-    // Hash password
     const hashedPassword = await hashPassword(password);
 
-    // Create user
     const user = await prisma.user.create({
       data: {
         email,
@@ -143,7 +120,6 @@ router.post('/register', async (req, res, next) => {
       },
     });
 
-    // Generate token
     const token = generateToken({
       id: user.id,
       email: user.email,
@@ -163,28 +139,160 @@ router.post('/register', async (req, res, next) => {
   }
 });
 
-// GET /auth/me - Get current user profile
-router.get('/me', authenticate, async (req: AuthRequest, res, next) => {
+// GET /auth/profile
+router.get('/profile', authenticate, async (req: AuthRequest, res, next) => {
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: req.user!.id },
+    if (!req.user) {
+      throw createError('User not authenticated', 401);
+    }
+
+    const userId = req.user.id;
+
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          telephone: true,
+          isAdmin: true,
+          role: true,
+          createdAt: true,
+          lastLogin: true
+        }
+      });
+
+      if (user) {
+        res.json({ user });
+        return;
+      }
+    } catch (dbError) {
+      console.log('Database not available, using token data');
+    }
+
+    res.json({
+      user: {
+        id: req.user.id,
+        email: req.user.email,
+        isAdmin: req.user.isAdmin,
+        name: 'Admin User'
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /auth/users - Get all users (Admin only)
+router.get('/users', authenticate, requireAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const users = await prisma.user.findMany({
       select: {
         id: true,
         email: true,
         name: true,
         telephone: true,
-        role: true,
         isAdmin: true,
         isActive: true,
+        createdAt: true,
+        lastLogin: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.json(users);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /auth/users - Create new user (Admin only)
+router.post('/users', authenticate, requireAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const { email, password, name, isAdmin = false } = createUserSchema.parse(req.body);
+
+    const existingUser = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (existingUser) {
+      throw createError('User already exists', 409);
+    }
+
+    const hashedPassword = await hashPassword(password);
+
+    const user = await prisma.user.create({
+      data: {
+        email,
+        name,
+        hashedPassword,
+        isAdmin,
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        isAdmin: true,
+        isActive: true,
+        createdAt: true,
       },
     });
 
-    if (!user) {
-      res.status(404).json({ error: 'User not found' });
+    res.status(201).json(user);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// PUT /auth/users/:id - Update user
+router.put('/users/:id', authenticate, async (req: AuthRequest, res, next): Promise<void> => {
+  try {
+    const userId = parseInt(req.params.id);
+    const updateData = updateUserSchema.parse(req.body);
+
+    // Check if user can update (self or admin)
+    if (req.user?.id !== userId && !req.user?.isAdmin) {
+      res.status(403).json({ error: 'Unauthorized to update this user' });
       return;
     }
 
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: updateData,
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        telephone: true,
+        isAdmin: true,
+        isActive: true,
+        createdAt: true,
+        lastLogin: true,
+      },
+    });
+
     res.json(user);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// DELETE /auth/users/:id - Delete user (Admin only)
+router.delete('/users/:id', authenticate, requireAdmin, async (req: AuthRequest, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = parseInt(id);
+
+    if (req.user?.id === userId) {
+      throw createError('Cannot delete your own account', 400);
+    }
+
+    await prisma.user.delete({
+      where: { id: userId },
+    });
+
+    res.status(204).send();
   } catch (error) {
     next(error);
   }
