@@ -1,5 +1,29 @@
 import React, { useState, useEffect } from 'react';
-import api from '../services/api';
+import {
+  Container,
+  Grid,
+  Typography,
+  Box,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Fab,
+  Snackbar,
+  Alert,
+  CircularProgress,
+} from '@mui/material';
+import {
+  Add,
+  Person,
+  Download,
+} from '@mui/icons-material';
+import { ThemeProvider } from '@mui/material/styles';
+import CustomerDetailCard from '../components/CustomerDetailCard';
+import { muiTheme } from '../theme/muiTheme';
+import { customerService } from '../services/customerService';
 
 export default function CustomerManagementPage() {
   const [customers, setCustomers] = useState([]);
@@ -7,10 +31,14 @@ export default function CustomerManagementPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState(null);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [newCustomer, setNewCustomer] = useState({
     name: '',
     email: '',
-    phone: ''
+    phone: '',
+    address: '',
+    notes: ''
   });
 
   useEffect(() => {
@@ -20,66 +48,98 @@ export default function CustomerManagementPage() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      // For now, use mock data since the API endpoints need proper authentication setup
-      // In a real implementation, these would be actual API calls
-      const mockCustomers = Array.from({length: 30}, (_, i) => ({
-        id: i + 1,
-        name: `Customer ${i + 1}`,
-        email: `customer${i + 1}@example.com`,
-        phone: `+1-868-${String(Math.floor(Math.random() * 900) + 100)}-${String(Math.floor(Math.random() * 9000) + 1000)}`
-      }));
+      setError(null);
 
-      const mockOrders = Array.from({length: 51}, (_, i) => ({
-        id: i + 1,
-        customer_id: Math.floor(Math.random() * 30) + 1,
-        items: [`Item ${i + 1}`, `Item ${i + 2}`],
-        status: 'pending',
-        order_date: new Date().toISOString(),
-        delivery_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
-      }));
+      console.log('Fetching customers and orders...');
 
-      setCustomers(mockCustomers);
-      setOrders(mockOrders);
+      // Fetch real data from backend
+      const customersResponse = await customerService.getCustomers();
+      console.log('Customers response:', customersResponse);
+
+      const ordersResponse = await customerService.getAllOrders();
+      console.log('Orders response:', ordersResponse);
+
+      // Handle both paginated and direct array responses
+      const customersData = customersResponse?.customers || customersResponse || [];
+      const ordersData = ordersResponse?.orders || ordersResponse || [];
+
+      console.log('Processed customers data:', customersData);
+      console.log('Processed orders data:', ordersData);
+
+      setCustomers(Array.isArray(customersData) ? customersData : []);
+      setOrders(Array.isArray(ordersData) ? ordersData : []);
     } catch (err) {
-      setError(err.message);
+      console.error('Error fetching data:', err);
+      setError(err.message || 'Failed to load data');
+      setCustomers([]); // Ensure it's always an array
+      setOrders([]);   // Ensure it's always an array
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCreateCustomer = async (e) => {
-    e.preventDefault();
+  const handleCreateCustomer = async () => {
     try {
-      // For demo purposes, add customer to local state
-      const newId = customers.length + 1;
-      const customer = {
-        id: newId,
-        ...newCustomer
-      };
-      setCustomers([...customers, customer]);
-      setNewCustomer({ name: '', email: '', phone: '' });
+      const createdCustomer = await customerService.createCustomer(newCustomer);
+      setCustomers([...customers, createdCustomer]);
+      setNewCustomer({ name: '', email: '', phone: '', address: '', notes: '' });
       setShowCreateForm(false);
-      // In a real app, this would be: await api.post('/api/customers', customer);
-    } catch (err) {
-      setError(err.message);
+      setSnackbar({ open: true, message: 'Customer created successfully!', severity: 'success' });
+    } catch (error) {
+      setSnackbar({ open: true, message: 'Failed to create customer', severity: 'error' });
     }
   };
 
   const handleDeleteCustomer = async (customerId) => {
-    if (window.confirm('Are you sure you want to delete this customer?')) {
-      try {
-        // For demo purposes, remove from local state
-        setCustomers(customers.filter(c => c.id !== customerId));
-        setOrders(orders.filter(o => o.customer_id !== customerId));
-        // In a real app, this would be: await api.delete(`/api/customers/${customerId}`);
-      } catch (err) {
-        setError(err.message);
-      }
+    try {
+      await customerService.deleteCustomer(customerId);
+      setCustomers(customers.filter(c => c.id !== customerId));
+      setOrders(orders.filter(o => o.customer_id !== customerId));
+      setSnackbar({ open: true, message: 'Customer deleted successfully!', severity: 'success' });
+    } catch (error) {
+      setSnackbar({ open: true, message: 'Failed to delete customer', severity: 'error' });
     }
   };
 
   const getCustomerOrders = (customerId) => {
     return orders.filter(order => order.customer_id === customerId);
+  };
+
+  const handleEditCustomer = (customer) => {
+    setEditingCustomer(customer);
+    setNewCustomer({
+      name: customer.name,
+      email: customer.email,
+      phone: customer.phone,
+      address: customer.address || '',
+      notes: customer.notes || ''
+    });
+    setShowCreateForm(true);
+  };
+
+  const handleUpdateCustomer = async () => {
+    try {
+      const updatedCustomer = await customerService.updateCustomer(editingCustomer.id, newCustomer);
+      const updatedCustomers = customers.map(customer =>
+        customer.id === editingCustomer.id ? updatedCustomer : customer
+      );
+      setCustomers(updatedCustomers);
+      setNewCustomer({ name: '', email: '', phone: '', address: '', notes: '' });
+      setEditingCustomer(null);
+      setShowCreateForm(false);
+      setSnackbar({ open: true, message: 'Customer updated successfully!', severity: 'success' });
+    } catch (error) {
+      setSnackbar({ open: true, message: 'Failed to update customer', severity: 'error' });
+    }
+  };
+
+  const handleViewOrders = (customerId) => {
+    // In a real implementation, this would navigate to orders page or show orders modal
+    setSnackbar({ open: true, message: `Viewing orders for customer ${customerId}`, severity: 'info' });
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbar({ ...snackbar, open: false });
   };
 
   const exportPDF = () => {
@@ -108,7 +168,7 @@ export default function CustomerManagementPage() {
         </head>
         <body>
           <div class="header">
-            <h1>🎯 Toy Store Customer Orders Report</h1>
+            <h1>Toy Store Customer Orders Report</h1>
             <p><strong>CARICOM IMPACS Assessment Project</strong></p>
             <p>Generated on: ${new Date().toLocaleDateString()}</p>
           </div>
@@ -147,17 +207,22 @@ export default function CustomerManagementPage() {
 
   if (loading) {
     return (
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        height: '100vh',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
-      }}>
-        <div style={{ textAlign: 'center', color: 'white' }}>
-          <h2 style={{ margin: 0, fontSize: '1.5rem' }}>Loading Customers...</h2>
-        </div>
-      </div>
+      <Box
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
+        minHeight="100vh"
+        sx={{
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+        }}
+      >
+        <Box textAlign="center" color="white">
+          <CircularProgress size={60} sx={{ color: 'white', mb: 3 }} />
+          <Typography variant="h5" component="h2">
+            Loading Customers...
+          </Typography>
+        </Box>
+      </Box>
     );
   }
 
@@ -186,30 +251,40 @@ export default function CustomerManagementPage() {
   }
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      padding: '20px',
-      fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-    }}>
-      <div style={{ textAlign: 'center', marginBottom: '40px' }}>
-        <h1 style={{
-          color: 'white',
-          fontSize: '3rem',
-          fontWeight: '800',
-          margin: '0 0 10px 0',
-          textShadow: '0 4px 8px rgba(0,0,0,0.3)'
-        }}>
-          👥 Customer Management
-        </h1>
-        <p style={{
-          color: 'rgba(255,255,255,0.9)',
-          fontSize: '1.2rem',
-          margin: 0
-        }}>
-          CARICOM IMPACS Assessment - Manage customers and orders
-        </p>
-      </div>
+    <ThemeProvider theme={muiTheme}>
+      <Box
+        sx={{
+          minHeight: '100vh',
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          p: 3,
+        }}
+      >
+        <Container maxWidth="xl">
+          <Box textAlign="center" mb={5}>
+            <Box display="flex" justifyContent="center" alignItems="center" mb={2}>
+              <Person sx={{ fontSize: 48, color: 'white', mr: 2 }} />
+              <Typography
+                variant="h2"
+                component="h1"
+                sx={{
+                  color: 'white',
+                  fontWeight: 800,
+                  textShadow: '0 4px 8px rgba(0,0,0,0.3)'
+                }}
+              >
+                Customer Management
+              </Typography>
+            </Box>
+            <Typography
+              variant="h6"
+              sx={{
+                color: 'rgba(255,255,255,0.9)',
+                fontWeight: 500
+              }}
+            >
+              CARICOM IMPACS Assessment - Manage customers and orders
+            </Typography>
+          </Box>
 
       <div style={{
         display: 'flex',
@@ -245,7 +320,7 @@ export default function CustomerManagementPage() {
             fontSize: '1rem'
           }}
         >
-          📄 Export PDF Report
+          Export PDF Report
         </button>
       </div>
 
@@ -337,59 +412,141 @@ export default function CustomerManagementPage() {
         margin: '0 auto',
         boxShadow: '0 20px 40px rgba(0,0,0,0.1)'
       }}>
-        <h3 style={{ marginBottom: '24px', color: '#1e293b' }}>
-          Customers ({customers.length})
-        </h3>
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-          gap: '20px'
-        }}>
-          {customers.map(customer => {
-            const customerOrders = getCustomerOrders(customer.id);
-            return (
-              <div key={customer.id} style={{
-                border: '1px solid #e2e8f0',
-                borderRadius: '12px',
-                padding: '20px',
-                backgroundColor: '#f8fafc'
-              }}>
-                <div style={{ marginBottom: '12px' }}>
-                  <h4 style={{ margin: '0 0 4px 0', color: '#1e293b' }}>{customer.name}</h4>
-                  <p style={{ margin: '0 0 4px 0', color: '#64748b', fontSize: '0.9rem' }}>{customer.email}</p>
-                  <p style={{ margin: '0 0 8px 0', color: '#64748b', fontSize: '0.9rem' }}>{customer.phone}</p>
-                </div>
-                <div style={{ marginBottom: '16px' }}>
-                  <span style={{ 
-                    background: '#dbeafe', 
-                    color: '#1d4ed8', 
-                    padding: '4px 8px', 
-                    borderRadius: '6px', 
-                    fontSize: '0.8rem',
-                    fontWeight: '600'
-                  }}>
-                    {customerOrders.length} orders
-                  </span>
-                </div>
-                <button
-                  onClick={() => handleDeleteCustomer(customer.id)}
-                  style={{
-                    background: '#ef4444',
-                    color: 'white',
-                    border: 'none',
-                    padding: '8px 16px',
-                    borderRadius: '6px',
-                    fontSize: '0.9rem',
-                    cursor: 'pointer'
-                  }}
-                >
-                  Delete
-                </button>
-              </div>
-            );
-          })}
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
+            <Typography variant="h4" component="h2" sx={{ color: 'text.primary', fontWeight: 700 }}>
+              Customers ({customers.length})
+            </Typography>
+            <Button
+              variant="contained"
+              startIcon={<Download />}
+              onClick={exportPDF}
+              sx={{ borderRadius: 2 }}
+            >
+              Export PDF
+            </Button>
+          </Box>
+
+          <Grid container spacing={3}>
+            {Array.isArray(customers) && customers.map(customer => (
+              <Grid key={customer.id} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
+                <CustomerDetailCard
+                  customer={customer}
+                  onEdit={handleEditCustomer}
+                  onDelete={handleDeleteCustomer}
+                  onViewOrders={handleViewOrders}
+                />
+              </Grid>
+            ))}
+          </Grid>
+
+          {/* Floating Action Button */}
+          <Fab
+            color="primary"
+            aria-label="add customer"
+            sx={{
+              position: 'fixed',
+              bottom: 32,
+              right: 32,
+            }}
+            onClick={() => {
+              setEditingCustomer(null);
+              setNewCustomer({ name: '', email: '', phone: '' });
+              setShowCreateForm(true);
+            }}
+          >
+            <Add />
+          </Fab>
+
+          {/* Create/Edit Customer Dialog */}
+          <Dialog
+            open={showCreateForm}
+            onClose={() => setShowCreateForm(false)}
+            maxWidth="sm"
+            fullWidth
+          >
+            <DialogTitle>
+              {editingCustomer ? 'Edit Customer' : 'Create New Customer'}
+            </DialogTitle>
+            <DialogContent>
+              <Box component="form" sx={{ mt: 2 }}>
+                <TextField
+                  fullWidth
+                  label="Customer Name"
+                  value={newCustomer.name}
+                  onChange={(e) => setNewCustomer({ ...newCustomer, name: e.target.value })}
+                  margin="normal"
+                  required
+                />
+                <TextField
+                  fullWidth
+                  label="Email"
+                  type="email"
+                  value={newCustomer.email}
+                  onChange={(e) => setNewCustomer({ ...newCustomer, email: e.target.value })}
+                  margin="normal"
+                  required
+                />
+                <TextField
+                  fullWidth
+                  label="Phone"
+                  value={newCustomer.phone}
+                  onChange={(e) => setNewCustomer({ ...newCustomer, phone: e.target.value })}
+                  margin="normal"
+                  required
+                />
+                <TextField
+                  fullWidth
+                  label="Address"
+                  value={newCustomer.address}
+                  onChange={(e) => setNewCustomer({ ...newCustomer, address: e.target.value })}
+                  margin="normal"
+                  multiline
+                  rows={2}
+                />
+                <TextField
+                  fullWidth
+                  label="Notes"
+                  value={newCustomer.notes}
+                  onChange={(e) => setNewCustomer({ ...newCustomer, notes: e.target.value })}
+                  margin="normal"
+                  multiline
+                  rows={3}
+                  placeholder="Customer preferences, special instructions, etc."
+                />
+              </Box>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setShowCreateForm(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="contained"
+                onClick={editingCustomer ? handleUpdateCustomer : handleCreateCustomer}
+                disabled={!newCustomer.name || !newCustomer.email || !newCustomer.phone}
+              >
+                {editingCustomer ? 'Update' : 'Create'}
+              </Button>
+            </DialogActions>
+          </Dialog>
+
+          {/* Snackbar for notifications */}
+          <Snackbar
+            open={snackbar.open}
+            autoHideDuration={6000}
+            onClose={handleCloseSnackbar}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+          >
+            <Alert
+              onClose={handleCloseSnackbar}
+              severity={snackbar.severity}
+              sx={{ width: '100%' }}
+            >
+              {snackbar.message}
+            </Alert>
+          </Snackbar>
         </div>
-      </div>
-    </div>
+        </Container>
+      </Box>
+    </ThemeProvider>
   );
 }

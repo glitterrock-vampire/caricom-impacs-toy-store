@@ -1,0 +1,19 @@
+{
+  "name": "toy-store-backend",
+  "version": "1.0.0",
+  "description": "Node.js backend for CARICOM IMPACS Toy Store",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "nodemon src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "seed": "ts-node src/scripts/seed.ts",
+    "seed:toys": "ts-node src/scripts/seedToys.ts",
+    "migrate": "prisma migrate dev",
+    "generate": "prisma generate",
+    "studio": "prisma studio",
+    "reset-data": "ts-node src/scripts/resetCustomersOrders.ts",
+    "seed-realistic": "ts-node src/scripts/seedRealistic.ts",
+    "reset-and-seed": "npm run reset-data && npm run seed-realistic"
+  }
+}

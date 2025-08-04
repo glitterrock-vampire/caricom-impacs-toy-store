@@ -44,11 +44,13 @@ A comprehensive full-stack web application for managing toy store operations wit
 ## 🛠️ Technology Stack
 
 ### Backend
-- **FastAPI** - Modern Python web framework
+- **Node.js + Express** - Modern JavaScript runtime and web framework
+- **TypeScript** - Type-safe JavaScript development
+- **Prisma ORM** - Modern database toolkit
 - **PostgreSQL** - Robust relational database
-- **SQLAlchemy** - Python SQL toolkit and ORM
 - **JWT Authentication** - Secure token-based auth
-- **Pydantic** - Data validation and serialization
+- **Zod** - Runtime type validation
+- **Swagger/OpenAPI** - Interactive API documentation
 
 ### Frontend
 - **React 18** - Modern JavaScript library
@@ -56,11 +58,21 @@ A comprehensive full-stack web application for managing toy store operations wit
 - **Modern CSS** - Responsive design with gradients and animations
 - **Fetch API** - HTTP client for API communication
 
+## 📁 Project Structure
+
+```
+toy-store-management/
+├── frontend/                    # React frontend application
+├── backend/                     # Node.js/TypeScript backend (current)
+├── backend-python-archived/     # Archived Python backend
+├── switch-backend.md           # Backend information guide
+└── README.md                   # This file
+```
+
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Python 3.8+
-- Node.js 16+
+- Node.js 18+
 - PostgreSQL 12+
 
 ### Installation
@@ -74,21 +86,22 @@ cd toy-store-management
 2. **Backend Setup**
 ```bash
 cd backend
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
+npm install
 ```
 
 3. **Database Setup**
 ```bash
-# Create PostgreSQL database
+# Create PostgreSQL database (if not exists)
 createdb toy_store_db
 
-# Set environment variable
-export DATABASE_URL="postgresql://username:password@localhost/toy_store_db"
+# Set environment variables in backend/.env
+DATABASE_URL="postgresql://toystore_user:toystore_pass@localhost/toystore_db"
+JWT_SECRET="your-secret-key"
 
-# Run database migrations and seed data
-python scripts/seed_database.py
+# Generate Prisma client and run migrations
+npx prisma generate
+npx prisma migrate dev --name init
+npm run seed
 ```
 
 4. **Frontend Setup**
@@ -102,7 +115,7 @@ npm install
 1. **Start Backend Server**
 ```bash
 cd backend
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+npm run dev
 ```
 
 2. **Start Frontend Development Server**
@@ -114,7 +127,8 @@ npm start
 3. **Access the Application**
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:8000
-- API Documentation: http://localhost:8000/docs
+- API Documentation: http://localhost:8000/api-docs
+- Health Check: http://localhost:8000/health
 
 ### Default Login Credentials
 - **Email**: admin@toystore.com

@@ -1,0 +1,171 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model for authentication and admin access
+model User {
+  id             Int       @id @default(autoincrement())
+  email          String    @unique
+  name           String?
+  telephone      String?
+  role           String    @default("user") // 'admin' or 'user'
+  hashedPassword String    @map("hashed_password")
+  isAdmin        Boolean   @default(false) @map("is_admin")
+  isActive       Boolean   @default(true) @map("is_active")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  lastLogin      DateTime? @map("last_login")
+
+  // Relations
+  customers Customer[]
+  orders    Order[]
+  products  Product[]
+  auditLogs AuditLog[]
+  reports   Report[]
+
+  @@map("users")
+}
+
+// Customer model for toy store customers
+model Customer {
+  id             Int       @id @default(autoincrement())
+  name           String
+  email          String    @unique
+  phone          String?
+  hashedPassword String?   @map("hashed_password") // Optional for guest orders
+  address        Json?     // JSON field for customer's primary address
+  country        String?
+  isVerified     Boolean   @default(false) @map("is_verified")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  // Foreign Keys
+  userId Int @map("user_id")
+
+  // Relations
+  owner  User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders Order[]
+
+  @@map("customers")
+}
+
+// Product model for toy inventory
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  category    String   // e.g., "truck", "LEGO", "doll", etc.
+  gender      String?  // "boys", "girls", or "unisex"
+  ageRange    String?  @map("age_range") // e.g., "5-8"
+  price       Float
+  stock       Int
+  sku         String   @unique
+  imageUrl    String?  @map("image_url")
+  status      String   @default("in_stock") // "in_stock", "out_of_stock", "discontinued"
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Foreign Keys
+  userId Int @map("user_id")
+
+  // Relations
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderItems OrderItem[]
+
+  @@map("products")
+}
+
+// Order model for customer purchases
+model Order {
+  id              Int         @id @default(autoincrement())
+  items           Json?       // Keep this for backward compatibility
+  orderNumber     String?     @unique @map("order_number")
+  orderDate       DateTime    @default(now()) @map("order_date")
+  deliveryAddress Json        @map("delivery_address") // JSON with street, city, country, etc.
+  deliveryDate    DateTime?   @map("delivery_date")
+  status          String?     @default("pending") // "pending", "processing", "shipped", "delivered", "cancelled"
+  shippingMethod  String?     @map("shipping_method")
+  trackingNumber  String?     @map("tracking_number")
+  notes           String?
+  totalAmount     Float?      @map("total_amount")
+  taxAmount       Float       @default(0.0) @map("tax_amount")
+  shippingCost    Float       @default(0.0) @map("shipping_cost")
+  discountAmount  Float       @default(0.0) @map("discount_amount")
+
+  // Foreign Keys
+  customerId Int @map("customer_id")
+  userId     Int @map("user_id")
+
+  // Relations
+  customer   Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderItems OrderItem[]
+
+  @@map("orders")
+}
+
+// OrderItem model for individual items in an order
+model OrderItem {
+  id          Int      @id @default(autoincrement())
+  quantity    Int      @default(1)
+  unitPrice   Float    @map("unit_price")
+  discount    Float    @default(0.0)
+  totalPrice  Float    @map("total_price")
+
+  // Foreign Keys
+  orderId   Int    @map("order_id")
+  productId String @map("product_id")
+
+  // Relations
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("order_items")
+}
+
+// AuditLog model for tracking changes
+model AuditLog {
+  id          Int       @id @default(autoincrement())
+  action      String    // e.g., "create", "update", "delete"
+  entityType  String    @map("entity_type") // e.g., "Customer", "Order"
+  entityId    Int       @map("entity_id")
+  oldValue    Json?     @map("old_value")
+  newValue    Json?     @map("new_value")
+  performedBy Int       @map("performed_by") // User ID
+  performedAt DateTime  @default(now()) @map("performed_at")
+  ipAddress   String?   @map("ip_address")
+  userAgent   String?   @map("user_agent")
+
+  // Relations
+  user User @relation(fields: [performedBy], references: [id], onDelete: Cascade)
+
+  @@map("audit_logs")
+}
+
+// Report model for storing generated reports
+model Report {
+  id          Int       @id @default(autoincrement())
+  name        String
+  type        String    // e.g., "customer", "order", "inventory"
+  format      String    @default("pdf") // "pdf", "csv", "excel"
+  parameters  Json?     // Parameters used to generate the report
+  generatedBy Int       @map("generated_by")
+  generatedAt DateTime  @default(now()) @map("generated_at")
+  filePath    String?   @map("file_path") // Path to stored report file
+  status      String    @default("completed") // "pending", "processing", "completed", "failed"
+
+  // Relations
+  user User @relation(fields: [generatedBy], references: [id], onDelete: Cascade)
+
+  @@map("reports")
+}
+
+

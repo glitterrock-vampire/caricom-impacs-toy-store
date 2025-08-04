@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Box } from '@mui/material';
+import { Store } from '@mui/icons-material';
 import { login } from '../services/authService';
 
 const UserIcon = () => (
@@ -50,7 +52,10 @@ export default function LoginPage() {
     <div className="login-root">
       <div className="login-panel-wrapper">
         <div className="login-left-panel">
-          <div className="login-brand">🎯 TOY STORE DASHBOARD</div>
+          <Box className="login-brand" display="flex" alignItems="center">
+            <Store sx={{ mr: 1, fontSize: 32 }} />
+            TOY STORE DASHBOARD
+          </Box>
           <div className="login-info">
             Welcome to the CARICOM IMPACS Toy Store Management System.<br />
             Manage customers, orders, and international shipping with ease!<br />

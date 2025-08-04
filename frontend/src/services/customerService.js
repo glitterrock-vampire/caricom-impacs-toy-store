@@ -1,25 +1,100 @@
+// Customer service for API calls
 import api from './api';
 
-// Fetch all customers
+export const customerService = {
+  async getCustomers() {
+    try {
+      const response = await api.get('/api/customers');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching customers:', error);
+      throw error;
+    }
+  },
+
+  // Get customer by ID
+  getCustomerById: async (id) => {
+    try {
+      const response = await api.get(`/api/customers/${id}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching customer:', error);
+      throw error;
+    }
+  },
+
+  // Create new customer
+  createCustomer: async (customerData) => {
+    try {
+      const response = await api.post('/api/customers', customerData);
+      return response.data;
+    } catch (error) {
+      console.error('Error creating customer:', error);
+      throw error;
+    }
+  },
+
+  // Update customer
+  updateCustomer: async (id, customerData) => {
+    try {
+      const response = await api.put(`/api/customers/${id}`, customerData);
+      return response.data;
+    } catch (error) {
+      console.error('Error updating customer:', error);
+      throw error;
+    }
+  },
+
+  // Delete customer
+  deleteCustomer: async (id) => {
+    try {
+      await api.delete(`/api/customers/${id}`);
+      return true;
+    } catch (error) {
+      console.error('Error deleting customer:', error);
+      throw error;
+    }
+  },
+
+  // Get orders for a customer
+  getCustomerOrders: async (customerId) => {
+    try {
+      const response = await api.get(`/api/customers/${customerId}/orders`);
+      return response.data || [];
+    } catch (error) {
+      console.error('Error fetching customer orders:', error);
+      return [];
+    }
+  },
+
+  async getAllOrders() {
+    try {
+      const response = await api.get('/api/orders');
+      return response.data.orders || response.data;
+    } catch (error) {
+      console.error('Error fetching all orders:', error);
+      throw error;
+    }
+  }
+};
+
+// Legacy exports for backward compatibility
 export async function fetchCustomers() {
-  const response = await api.get('/customers/');
-  return response.data;
+  return customerService.getCustomers();
 }
 
-// Create a new customer
 export async function createCustomer(customer) {
-  const response = await api.post('/customers/', customer);
-  return response.data;
+  return customerService.createCustomer(customer);
 }
 
-// Delete a customer by ID
+export async function updateCustomer(id, customer) {
+  return customerService.updateCustomer(id, customer);
+}
+
 export async function deleteCustomer(customerId) {
-  const response = await api.delete(`/customers/${customerId}`);
-  return response.data;
+  return customerService.deleteCustomer(customerId);
 }
 
-// Fetch orders for a customer
 export async function fetchCustomerOrders(customerId) {
-  const response = await api.get(`/customers/${customerId}/orders`);
-  return response.data;
+  return customerService.getCustomerOrders(customerId);
 }

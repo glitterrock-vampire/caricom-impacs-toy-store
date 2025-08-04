@@ -1,6 +1,6 @@
 // src/contexts/DashboardContext.js
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { getDashboardStats, getWeeklyOrders, getPopularProducts } from '../services/dashboardService';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { getDashboardStats, getRecentOrders, getMonthlyRevenue } from '../services/dashboardService';
 
 const DashboardContext = createContext();
 
@@ -8,22 +8,22 @@ export const useDashboard = () => useContext(DashboardContext);
 
 export const DashboardProvider = ({ children }) => {
   const [stats, setStats] = useState(null);
-  const [weeklyOrders, setWeeklyOrders] = useState([]);
-  const [popularProducts, setPopularProducts] = useState([]);
+  const [recentOrders, setRecentOrders] = useState([]);
+  const [monthlyRevenue, setMonthlyRevenue] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const fetchDashboardData = useCallback(async () => {
     try {
       setLoading(true);
-      const [statsData, ordersData, productsData] = await Promise.all([
+      const [statsData, ordersData, revenueData] = await Promise.all([
         getDashboardStats(),
-        getWeeklyOrders(),
-        getPopularProducts()
+        getRecentOrders(),
+        getMonthlyRevenue()
       ]);
       setStats(statsData);
-      setWeeklyOrders(ordersData);
-      setPopularProducts(productsData);
+      setRecentOrders(ordersData);
+      setMonthlyRevenue(revenueData);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -31,10 +31,12 @@ export const DashboardProvider = ({ children }) => {
     }
   }, []);
 
-  // Temporarily disabled to prevent infinite loop
-  // useEffect(() => {
-  //   fetchDashboardData();
-  // }, []);
+  useEffect(() => {
+    fetchDashboardData();
+    // Set up auto-refresh every 60 seconds for real-time updates
+    const interval = setInterval(fetchDashboardData, 60000);
+    return () => clearInterval(interval);
+  }, [fetchDashboardData]);
 
   const refreshData = useCallback(() => {
     return fetchDashboardData();
@@ -44,8 +46,8 @@ export const DashboardProvider = ({ children }) => {
     <DashboardContext.Provider
       value={{
         stats,
-        weeklyOrders,
-        popularProducts,
+        recentOrders,
+        monthlyRevenue,
         loading,
         error,
         refreshData
