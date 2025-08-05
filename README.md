@@ -1,169 +1,146 @@
 # 🧸 Toy Store Management System
 
-A comprehensive full-stack web application for managing toy store operations with international shipping capabilities, built for the CARICOM IMPACS Application Developer Assessment.
+![System Architecture](https://img.shields.io/badge/architecture-full--stack-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Version](https://img.shields.io/badge/version-1.0.0-orange)
+
+A comprehensive full-stack web application for managing toy store operations with international shipping capabilities.
 
 ## 🌟 Features
 
 ### 🔐 Authentication & Security
-- Secure login system with JWT tokens
-- Admin and customer role management
-- Protected routes and API endpoints
+- JWT-based authentication
+- Role-based access control (Admin/Staff)
+- Password encryption
+- Session management
 
 ### 📊 Dashboard Analytics
-- Real-time business metrics and KPIs
-- **176+ orders** from **30+ customers** worldwide
-- **Global shipping tracking** across 8+ regions
-- Revenue analytics and order trends
-- Interactive charts and visualizations
+- Real-time order tracking
+- Geographic visualization
+- Revenue analytics
+- Interactive charts
 
 ### 👥 Customer Management
-- Complete CRUD operations (Create, Read, Update, Delete)
-- Customer profile management
-- Order history tracking
-- **PDF export functionality**
-- Search and filter capabilities
-
-### 🌍 International Shipping
-- **Global coverage** across multiple continents:
-  - 🇺🇸 North America (USA, Canada)
-  - 🇪🇺 Europe (UK, France, Germany, Italy, Spain, Netherlands)
-  - 🇯🇵 Asia (Japan, South Korea, Singapore, Hong Kong, China, India)
-  - 🇯🇲 Caribbean/CARICOM (Jamaica, Trinidad & Tobago, Barbados)
-  - 🇦🇺 Oceania (Australia, New Zealand)
-  - 🇧🇷 South America (Brazil, Argentina, Peru)
-  - 🇿🇦 Africa (South Africa, Nigeria, Egypt)
-  - 🇦🇪 Middle East (UAE, Lebanon, Jordan)
+- Complete CRUD operations
+- PDF/Excel export
+- Advanced search/filter
+- Bulk operations
 
 ### 🧸 Product Management
-- **24+ toy categories** including:
-  - Remote Control Trucks, LEGO Creator Sets
-  - Educational Tablets, Science Kits
-  - Action Figures, Board Games
-  - Art Supplies, Musical Instruments
+- 24+ toy categories
+- Inventory tracking
+- Stock level alerts
+- Barcode support
 
-## 🛠️ Technology Stack
+### 🌍 International Shipping
+- 20+ countries supported
+- Multi-currency
+- Tax calculation
+- Delivery tracking
 
-### Backend
-- **Node.js + Express** - Modern JavaScript runtime and web framework
-- **TypeScript** - Type-safe JavaScript development
-- **Prisma ORM** - Modern database toolkit
-- **PostgreSQL** - Robust relational database
-- **JWT Authentication** - Secure token-based auth
-- **Zod** - Runtime type validation
-- **Swagger/OpenAPI** - Interactive API documentation
+## 🛠 Technology Stack
 
 ### Frontend
-- **React 18** - Modern JavaScript library
-- **React Router** - Client-side routing
-- **Modern CSS** - Responsive design with gradients and animations
-- **Fetch API** - HTTP client for API communication
+| Technology | Purpose |
+|------------|---------|
+| React 18 | UI Framework |
+| Material-UI | Component Library |
+| Redux Toolkit | State Management |
+| Chart.js | Data Visualization |
 
-## 📁 Project Structure
+### Backend
+| Technology | Purpose |
+|------------|---------|
+| Node.js | Runtime |
+| Express | Web Framework |
+| TypeScript | Type Safety |
+| Prisma | ORM |
 
-```
-toy-store-management/
-├── frontend/                    # React frontend application
-├── backend/                     # Node.js/TypeScript backend (current)
-├── backend-python-archived/     # Archived Python backend
-├── switch-backend.md           # Backend information guide
-└── README.md                   # This file
-```
+### Database
+| Technology | Purpose |
+|------------|---------|
+| PostgreSQL | Primary Database |
+| Redis | Caching (Optional) |
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 - Node.js 18+
 - PostgreSQL 12+
+- Git
 
 ### Installation
-
-1. **Clone the repository**
 ```bash
-git clone <repository-url>
+# Clone repository
+git clone https://github.com/your-repo/toy-store-management.git
 cd toy-store-management
-```
 
-2. **Backend Setup**
-```bash
-cd backend
+# Install dependencies
 npm install
-```
+cd client && npm install && cd ..
 
-3. **Database Setup**
-```bash
-# Create PostgreSQL database (if not exists)
-createdb toy_store_db
-
-# Set environment variables in backend/.env
-DATABASE_URL="postgresql://toystore_user:toystore_pass@localhost/toystore_db"
-JWT_SECRET="your-secret-key"
-
-# Generate Prisma client and run migrations
-npx prisma generate
+# Configure environment
+cp .env.example .env
+# Edit .env with your credentials
+Database Setup
+bash
+# Run migrations
 npx prisma migrate dev --name init
-npm run seed
-```
 
-4. **Frontend Setup**
-```bash
-cd frontend
-npm install
-```
-
-### Running the Application
-
-1. **Start Backend Server**
-```bash
-cd backend
+# Seed sample data
+npx prisma db seed
+Running the Application
+bash
+# Development mode
 npm run dev
-```
 
-2. **Start Frontend Development Server**
-```bash
-cd frontend
+# Production build
+npm run build
 npm start
-```
+📊 Database Access
+To access Prisma Studio:
 
-3. **Access the Application**
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:8000
-- API Documentation: http://localhost:8000/api-docs
-- Health Check: http://localhost:8000/health
+bash
+cd backend
+npx prisma studio
+Then visit: http://localhost:5555
 
-### Default Login Credentials
-- **Email**: admin@toystore.com
-- **Password**: admin123
+🌐 API Endpoints
+Endpoint	Method	Description
+/api/auth/login	POST	User login
+/api/customers	GET	List customers
+/api/orders	POST	Create order
+View full API docs at: http://localhost:8000/docs
 
-## 🎯 Assessment Requirements Completed
+🐛 Troubleshooting
+Common issues:
 
-✅ **Login Page** - Secure authentication system
-✅ **Dashboard** - Real-time analytics with international data
-✅ **Customer Management** - Full CRUD with PDF export
-✅ **Database** - 30+ customers, 176+ orders, PostgreSQL
-✅ **International Shipping** - Global coverage demonstration
-✅ **Professional UI/UX** - Modern, responsive design
+Database connection errors:
 
-## 🌍 Global Reach
+Verify PostgreSQL is running
 
-The system demonstrates international e-commerce capabilities with orders from:
-- **8 major regions** worldwide
-- **20+ countries** with localized addresses
-- **Realistic shipping logistics** with varied delivery times
-- **Multi-currency support** ready for implementation
+Check .env configuration
 
-## 📈 Performance Metrics
+CORS issues:
 
-- **176+ total orders** processed
-- **30+ active customers** managed
-- **$22,000+ revenue** tracked
-- **8+ regions** served globally
-- **Sub-second** API response times
+Ensure correct origins in CORS config
 
-## 📝 API Documentation
+Prisma errors:
 
-Once the backend is running, access the interactive API documentation at:
-`http://localhost:8000/docs`
+Run npx prisma generate
 
-## 👨‍💻 Developer
+Reset with npx prisma migrate reset
 
-Built with ❤️ for the CARICOM IMPACS assessment, demonstrating full-stack development capabilities with modern technologies and international business requirements.
+🤝 Contributing
+Fork the repository
+
+Create your feature branch (git checkout -b feature/amazing-feature)
+
+Commit your changes (git commit -m 'Add some feature')
+
+Push to the branch (git push origin feature/amazing-feature)
+
+Open a Pull Request
+
+📜 License
+MIT License © 2023 Toy Store Management System
