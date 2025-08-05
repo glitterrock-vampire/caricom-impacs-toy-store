@@ -1,0 +1,13 @@
+id,name,description,category,gender,age_range,price,stock,sku,image_url,status,created_at,updated_at,user_id
+cmdx8knq00001ir0xutsertmn,Super Hero Action Figure,Detailed superhero figure with accessories,Action Figures,,,24.99,150,SH-001,,in_stock,2025-08-04 14:59:25.079,2025-08-04 14:59:25.079,3
+cmdx8knq20003ir0xz6s3qcti,Princess Doll Set,Beautiful princess doll with dress-up accessories,Dolls,,,34.99,120,PD-001,,in_stock,2025-08-04 14:59:25.082,2025-08-04 14:59:25.082,3
+cmdx8knq30005ir0x57p0jaid,LEGO Castle Set,Medieval castle building set with 500+ pieces,Building Blocks,,,89.99,75,LC-001,,in_stock,2025-08-04 14:59:25.083,2025-08-04 14:59:25.083,3
+cmdx8knq40007ir0xjkkwe71l,Learning Tablet,Educational tablet for kids with games and activities,Educational,,,79.99,90,LT-001,,in_stock,2025-08-04 14:59:25.084,2025-08-04 14:59:25.084,3
+cmdx8knq40009ir0xzq54nccm,Remote Control Car,Fast RC car with LED lights and sound effects,Electronic,,,45.99,110,RC-001,,in_stock,2025-08-04 14:59:25.085,2025-08-04 14:59:25.085,3
+cmdx8knq5000bir0xbffxpf4m,Soccer Ball Set,Professional size soccer ball with pump and cones,Outdoor,,,29.99,200,SB-001,,in_stock,2025-08-04 14:59:25.085,2025-08-04 14:59:25.085,3
+cmdx8knq5000dir0xmjejp6au,Monopoly Board Game,Classic family board game for ages 8+,Board Games,,,19.99,180,MG-001,,in_stock,2025-08-04 14:59:25.086,2025-08-04 14:59:25.086,3
+cmdx8knq6000fir0xk6szx3uw,1000 Piece Puzzle,Beautiful landscape jigsaw puzzle,Puzzles,,,15.99,95,PZ-001,,in_stock,2025-08-04 14:59:25.086,2025-08-04 14:59:25.086,3
+cmdx8knq7000hir0xsy3ka8tx,Robot Building Kit,Build and program your own robot,Educational,,,129.99,45,RB-001,,in_stock,2025-08-04 14:59:25.087,2025-08-04 14:59:25.087,3
+cmdx8knq7000jir0xbme7irmm,Barbie Dream House,Three-story dollhouse with furniture,Dolls,,,199.99,30,BD-001,,in_stock,2025-08-04 14:59:25.087,2025-08-04 14:59:25.087,3
+cmdx8knq7000lir0xr3d00fh4,Nerf Blaster,Foam dart blaster with 20 darts,Outdoor,,,39.99,85,NB-001,,in_stock,2025-08-04 14:59:25.088,2025-08-04 14:59:25.088,3
+cmdx8knq8000nir0xsovy6s38,Chess Set,Wooden chess set with storage box,Board Games,,,49.99,6,CS-001,,low_stock,2025-08-04 14:59:25.088,2025-08-04 15:02:24.849,3

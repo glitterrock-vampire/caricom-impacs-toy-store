@@ -122,3 +122,66 @@ router.delete('/:id', authenticate, requireAdmin, async (req: AuthRequest, res, 
 });
 
 export default router;
+
+/**
+ * @swagger
+ * /api/orders:
+ *   get:
+ *     summary: Get all orders
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of orders
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Order'
+ *   post:
+ *     summary: Create a new order
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [customerId, items]
+ *             properties:
+ *               customerId:
+ *                 type: number
+ *               items:
+ *                 type: object
+ *               deliveryAddress:
+ *                 type: object
+ *               deliveryDate:
+ *                 type: string
+ *                 format: date-time
+ *     responses:
+ *       201:
+ *         description: Order created successfully
+ */
+
+/**
+ * @swagger
+ * /api/orders/{id}:
+ *   delete:
+ *     summary: Delete order
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Order deleted successfully
+ */

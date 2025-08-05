@@ -88,9 +88,12 @@ model Order {
   id              Int         @id @default(autoincrement())
   items           Json?       // Keep this for backward compatibility
   orderNumber     String?     @unique @map("order_number")
-  orderDate       DateTime    @default(now()) @map("order_date")
+  orderDate       DateTime    @default(now()) @map("order_date")  // When the order was placed
+  pendingDate     DateTime?   @map("pending_date")     // When the order entered pending status
+  processingDate  DateTime?   @map("processing_date")  // When the order started being processed
+  shippedDate     DateTime?   @map("shipped_date")     // When the order was shipped
+  deliveryDate    DateTime?   @map("delivery_date")    // When the order was delivered
   deliveryAddress Json        @map("delivery_address") // JSON with street, city, country, etc.
-  deliveryDate    DateTime?   @map("delivery_date")
   status          String?     @default("pending") // "pending", "processing", "shipped", "delivered", "cancelled"
   shippingMethod  String?     @map("shipping_method")
   trackingNumber  String?     @map("tracking_number")

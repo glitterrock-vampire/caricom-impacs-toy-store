@@ -35,15 +35,22 @@ interface ProcessingTimeRow {
  * /api/dashboard/stats:
  *   get:
  *     summary: Get dashboard statistics
- *     description: Retrieve key business metrics and statistics
  *     tags: [Dashboard]
+ *     security:
+ *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Dashboard statistics retrieved successfully
+ *         description: Dashboard statistics
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/DashboardStats'
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
 router.get('/stats', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
@@ -144,7 +151,24 @@ router.get('/stats', authenticate, async (req: AuthRequest, res: Response, next:
   }
 });
 
-// GET /api/dashboard/recent-orders
+/**
+ * @swagger
+ * /api/dashboard/recent-orders:
+ *   get:
+ *     summary: Get recent orders for dashboard
+ *     tags: [Dashboard]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of recent orders
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Order'
+ */
 router.get('/recent-orders', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const recentOrders = await prisma.order.findMany({
@@ -163,7 +187,29 @@ router.get('/recent-orders', authenticate, async (req: AuthRequest, res: Respons
   }
 });
 
-// GET /api/dashboard/monthly-revenue
+/**
+ * @swagger
+ * /api/dashboard/monthly-revenue:
+ *   get:
+ *     summary: Get monthly revenue data
+ *     tags: [Dashboard]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Monthly revenue breakdown
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   month:
+ *                     type: string
+ *                   revenue:
+ *                     type: number
+ */
 router.get('/monthly-revenue', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     // Get orders from the last 12 months using totalAmount field

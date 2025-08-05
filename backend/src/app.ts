@@ -77,11 +77,9 @@ app.use('/api/reports', reportsRouter);
 // Swagger API documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
 
-// Swagger API documentation
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
-
 // Error handling middleware
 app.use(notFound);
 app.use(errorHandler);
 
+// 
 export default app;

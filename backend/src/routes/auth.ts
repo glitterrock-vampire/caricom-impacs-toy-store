@@ -1,4 +1,4 @@
-import express, { Response, NextFunction } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import prisma from '../lib/prisma';
 import { hashPassword, comparePassword, generateToken } from '../lib/auth';
@@ -35,7 +35,33 @@ const updateUserSchema = z.object({
 });
 
 // POST /auth/login
-router.post('/login', async (req, res, next): Promise<void> => {
+/**
+ * @swagger
+ * /api/auth/login:
+ *   post:
+ *     summary: Admin login
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/LoginRequest'
+ *     responses:
+ *       200:
+ *         description: Login successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/LoginResponse'
+ *       401:
+ *         description: Invalid credentials
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.post('/login', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { email, password } = loginSchema.parse(req.body);
 
@@ -97,6 +123,34 @@ router.post('/login', async (req, res, next): Promise<void> => {
 });
 
 // POST /auth/register
+/**
+ * @swagger
+ * /api/auth/register:
+ *   post:
+ *     summary: Register new user
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, password, name]
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               password:
+ *                 type: string
+ *                 minLength: 6
+ *               name:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: User registered successfully
+ *       409:
+ *         description: User already exists
+ */
 router.post('/register', async (req, res, next) => {
   try {
     const { email, password, name } = registerSchema.parse(req.body);
@@ -140,6 +194,22 @@ router.post('/register', async (req, res, next) => {
 });
 
 // GET /auth/profile
+/**
+ * @swagger
+ * /api/auth/profile:
+ *   get:
+ *     summary: Get current user profile
+ *     tags: [Authentication]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: User profile
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/User'
+ */
 router.get('/profile', authenticate, async (req: AuthRequest, res, next) => {
   try {
     if (!req.user) {
@@ -185,6 +255,48 @@ router.get('/profile', authenticate, async (req: AuthRequest, res, next) => {
 });
 
 // GET /auth/users - Get all users (Admin only)
+/**
+ * @swagger
+ * /api/auth/users:
+ *   get:
+ *     summary: Get all users (Admin only)
+ *     tags: [Authentication]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of users
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/User'
+ *   post:
+ *     summary: Create new user (Admin only)
+ *     tags: [Authentication]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, password, name]
+ *             properties:
+ *               email:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *               name:
+ *                 type: string
+ *               isAdmin:
+ *                 type: boolean
+ *     responses:
+ *       201:
+ *         description: User created successfully
+ */
 router.get('/users', authenticate, requireAdmin, async (req: AuthRequest, res, next) => {
   try {
     const users = await prisma.user.findMany({
