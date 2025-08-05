@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -10,16 +10,16 @@ import {
   Grid,
   Card,
   CardContent,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-  Divider,
-  Chip,
-  LinearProgress,
-  IconButton,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  CircularProgress,
   ToggleButton,
-  ToggleButtonGroup,
+  ToggleButtonGroup
 } from '@mui/material';
 import {
   Chart as ChartJS,
@@ -35,20 +35,8 @@ import {
   Filler,
 } from 'chart.js';
 import { Line, Bar, Pie, Doughnut } from 'react-chartjs-2';
-import {
-  ShoppingCart,
-  AttachMoney,
-  People,
-  TrendingUp,
-  ZoomIn,
-  BarChart,
-  Timeline,
-  PieChart,
-  Close,
-  Category,
-  LocationOn,
-} from '@mui/icons-material';
-import DetailedBreakdownModal from './DetailedBreakdownModal';
+import { reportService } from '../services/reportService';
+import api from '../services/api';
 
 // Register Chart.js components
 ChartJS.register(
@@ -64,16 +52,330 @@ ChartJS.register(
   Filler
 );
 
-const DashboardDetailModal = ({ open, onClose, type, data }) => {
-  const [detailModalOpen, setDetailModalOpen] = useState(false);
-  const [detailModalType, setDetailModalType] = useState(null);
-  const [detailModalSubType, setDetailModalSubType] = useState(null);
-  const [chartType, setChartType] = useState('bar');
+export default function DashboardDetailModal({ open, onClose, type, title }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [chartType, setChartType] = useState('line');
 
-  const handleDetailClick = (subType) => {
-    setDetailModalType(type);
-    setDetailModalSubType(subType);
-    setDetailModalOpen(true);
+  useEffect(() => {
+    if (open && type) {
+      fetchData();
+    }
+  }, [open, type]);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      
+      // Use existing dashboard stats data for now since analytics endpoints aren't set up
+      const response = await api.get('/api/dashboard/stats');
+      const statsData = response.data;
+      
+      // Transform stats data based on modal type
+      let transformedData;
+      switch (type) {
+        case 'customers':
+          transformedData = {
+            totalCustomers: statsData.totalCustomers,
+            growth: 15.2, // Calculate from data if available
+            customerSegments: [
+              { segment: 'New Customers', count: Math.floor(statsData.totalCustomers * 0.35) },
+              { segment: 'Returning Customers', count: Math.floor(statsData.totalCustomers * 0.45) },
+              { segment: 'VIP Customers', count: Math.floor(statsData.totalCustomers * 0.15) },
+              { segment: 'Inactive Customers', count: Math.floor(statsData.totalCustomers * 0.05) }
+            ],
+            monthlyGrowth: statsData.monthlyOrders?.map((item, index) => ({
+              month: item.month,
+              customers: Math.floor(item.count * 0.8) // Estimate customers from orders
+            })) || []
+          };
+          break;
+          
+        case 'orders':
+          transformedData = {
+            summary: {
+              totalOrders: statsData.totalOrders,
+              orderGrowth: statsData.orderGrowth || 0,
+              revenueGrowth: 8.5,
+              avgProcessingTime: 3
+            },
+            monthlyOrders: statsData.monthlyOrders || [],
+            statusBreakdown: Object.entries(statsData.statusBreakdown || {}).map(([status, count]) => ({
+              status: status.charAt(0).toUpperCase() + status.slice(1),
+              count: count,
+              percentage: ((count / statsData.totalOrders) * 100).toFixed(1)
+            }))
+          };
+          break;
+          
+        case 'revenue':
+          const totalRevenue = statsData.totalRevenue || statsData.total_revenue || 0;
+          transformedData = {
+            totalRevenue: totalRevenue,
+            growth: 12.3,
+            monthlyRevenue: statsData.monthlyOrders?.map(item => ({
+              month: item.month,
+              revenue: item.count * (statsData.avgOrderValue || 75) // Estimate revenue
+            })) || [],
+            revenueByCategory: [
+              { category: 'Action Figures', revenue: totalRevenue * 0.35 },
+              { category: 'Educational Toys', revenue: totalRevenue * 0.25 },
+              { category: 'Board Games', revenue: totalRevenue * 0.20 },
+              { category: 'Outdoor Toys', revenue: totalRevenue * 0.20 }
+            ]
+          };
+          break;
+          
+        case 'avg_order':
+          transformedData = {
+            avgOrderValue: statsData.avgOrderValue || statsData.avg_order_value || 0,
+            weeklyTrends: [
+              { week: 'Week 1', value: (statsData.avgOrderValue || 75) * 0.95 },
+              { week: 'Week 2', value: (statsData.avgOrderValue || 75) * 1.02 },
+              { week: 'Week 3', value: (statsData.avgOrderValue || 75) * 0.98 },
+              { week: 'Week 4', value: (statsData.avgOrderValue || 75) * 1.05 }
+            ]
+          };
+          break;
+          
+        default:
+          transformedData = statsData;
+      }
+      
+      setData(transformedData);
+      
+    } catch (error) {
+      console.error('Error fetching analytics data:', error);
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getChartData = () => {
+    if (!data) return { labels: [], datasets: [] };
+
+    switch (type) {
+      case 'customers':
+        if (chartType === 'pie' || chartType === 'doughnut') {
+          return {
+            labels: data.customerSegments?.map(item => item.segment) || [],
+            datasets: [{
+              data: data.customerSegments?.map(item => item.count) || [],
+              backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444'],
+              borderWidth: 2
+            }]
+          };
+        } else {
+          // Line/Bar chart showing monthly customer growth
+          return {
+            labels: data.monthlyGrowth?.map(item => item.month) || [],
+            datasets: [{
+              label: 'New Customers',
+              data: data.monthlyGrowth?.map(item => item.customers) || [],
+              borderColor: '#3b82f6',
+              backgroundColor: chartType === 'bar' ? '#3b82f6' : 'rgba(59, 130, 246, 0.1)',
+              tension: 0.4,
+              fill: chartType === 'line'
+            }]
+          };
+        }
+
+      case 'orders':
+        if (chartType === 'pie' || chartType === 'doughnut') {
+          return {
+            labels: data.statusBreakdown?.map(item => item.status) || [],
+            datasets: [{
+              data: data.statusBreakdown?.map(item => item.count) || [],
+              backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'],
+              borderWidth: 2
+            }]
+          };
+        } else {
+          return {
+            labels: data.monthlyOrders?.map(item => item.month) || [],
+            datasets: [
+              {
+                label: 'Orders',
+                data: data.monthlyOrders?.map(item => item.count) || [],
+                borderColor: '#6366f1',
+                backgroundColor: chartType === 'bar' ? '#6366f1' : 'rgba(99, 102, 241, 0.1)',
+                tension: 0.4,
+                fill: chartType === 'line'
+              }
+            ]
+          };
+        }
+
+      case 'revenue':
+        if (chartType === 'pie' || chartType === 'doughnut') {
+          return {
+            labels: data.revenueByCategory?.map(item => item.category) || [],
+            datasets: [{
+              data: data.revenueByCategory?.map(item => item.revenue) || [],
+              backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444'],
+              borderWidth: 2
+            }]
+          };
+        } else {
+          return {
+            labels: data.monthlyRevenue?.map(item => item.month) || [],
+            datasets: [{
+              label: 'Revenue ($)',
+              data: data.monthlyRevenue?.map(item => item.revenue) || [],
+              borderColor: '#10b981',
+              backgroundColor: chartType === 'bar' ? '#10b981' : 'rgba(16, 185, 129, 0.1)',
+              tension: 0.4,
+              fill: chartType === 'line'
+            }]
+          };
+        }
+
+      case 'avg_order':
+        return {
+          labels: data.weeklyTrends?.map(item => item.week) || [],
+          datasets: [{
+            label: 'Average Order Value ($)',
+            data: data.weeklyTrends?.map(item => item.value) || [],
+            borderColor: '#f59e0b',
+            backgroundColor: chartType === 'bar' ? '#f59e0b' : 'rgba(245, 158, 11, 0.1)',
+            tension: 0.4,
+            fill: chartType === 'line'
+          }]
+        };
+
+      default:
+        return { labels: [], datasets: [] };
+    }
+  };
+
+  const getChartOptions = () => {
+    const baseOptions = {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'top',
+          display: chartType !== 'pie' && chartType !== 'doughnut'
+        },
+        tooltip: {
+          mode: 'index',
+          intersect: false,
+          callbacks: {
+            label: function(context) {
+              let label = context.dataset.label || '';
+              if (label) {
+                label += ': ';
+              }
+              
+              // Safe value handling
+              let value = context.parsed;
+              if (chartType === 'pie' || chartType === 'doughnut') {
+                value = context.parsed || 0;
+              } else {
+                value = context.parsed?.y ?? context.parsed ?? 0;
+              }
+              
+              // Format based on type
+              if (type === 'revenue') {
+                label += '$' + (typeof value === 'number' ? value.toLocaleString() : '0');
+              } else {
+                label += (typeof value === 'number' ? value.toLocaleString() : '0');
+              }
+              
+              return label;
+            }
+          }
+        }
+      }
+    };
+
+    // Add scales for line and bar charts
+    if (chartType === 'line' || chartType === 'bar') {
+      baseOptions.scales = {
+        y: {
+          beginAtZero: true,
+          title: { 
+            display: true, 
+            text: type === 'revenue' ? 'Revenue ($)' : 
+                  type === 'customers' ? 'Number of Customers' :
+                  type === 'avg_order' ? 'Average Order Value ($)' : 'Orders'
+          }
+        }
+      };
+    }
+
+    return baseOptions;
+  };
+
+  const renderChart = () => {
+    const chartData = getChartData();
+    const options = getChartOptions();
+
+    if (!chartData.labels || chartData.labels.length === 0) {
+      return (
+        <Box display="flex" justifyContent="center" alignItems="center" height={300}>
+          <Typography color="textSecondary">No chart data available</Typography>
+        </Box>
+      );
+    }
+
+    const ChartComponent = {
+      line: Line,
+      bar: Bar,
+      pie: Pie,
+      doughnut: Doughnut
+    }[chartType] || Line;
+
+    return <ChartComponent data={chartData} options={options} />;
+  };
+
+  const getModalTitle = () => {
+    switch (type) {
+      case 'orders': return 'Total Orders Analysis';
+      case 'revenue': return 'Revenue Analysis';
+      case 'customers': return 'Customer Analysis';
+      case 'avg_order': return 'Average Order Value';
+      default: return 'Analytics';
+    }
+  };
+
+  const getModalStats = () => {
+    if (!data) return {};
+    
+    switch (type) {
+      case 'orders':
+        return {
+          total: data.summary?.totalOrders || 0,
+          growth: `${data.summary?.orderGrowth >= 0 ? '+' : ''}${data.summary?.orderGrowth?.toFixed(1) || 0}%`,
+          period: 'vs last month',
+          breakdown: data.statusBreakdown || [],
+          additionalMetrics: {
+            avgProcessingTime: `${data.summary?.avgProcessingTime || 0} days`,
+            revenueGrowth: `${data.summary?.revenueGrowth >= 0 ? '+' : ''}${data.summary?.revenueGrowth?.toFixed(1) || 0}%`
+          }
+        };
+      case 'revenue':
+        return {
+          total: `$${(data.totalRevenue || 0).toLocaleString()}`,
+          growth: `${data.growth >= 0 ? '+' : ''}${data.growth?.toFixed(1) || 0}%`,
+          period: 'vs last month'
+        };
+      case 'customers':
+        return {
+          total: data.totalCustomers || 0,
+          growth: `${data.growth >= 0 ? '+' : ''}${data.growth?.toFixed(1) || 0}%`,
+          period: 'vs last month'
+        };
+      case 'avg_order':
+        return {
+          total: `$${(data.avgOrderValue || 0).toFixed(2)}`,
+          growth: '+5%',
+          period: 'vs last month'
+        };
+      default:
+        return {};
+    }
   };
 
   const handleChartTypeChange = (event, newChartType) => {
@@ -82,776 +384,119 @@ const DashboardDetailModal = ({ open, onClose, type, data }) => {
     }
   };
 
-  // Generate chart data based on modal type
-  const getChartData = () => {
-    const colors = {
-      primary: '#6366f1',
-      secondary: '#8b5cf6',
-      success: '#10b981',
-      warning: '#f59e0b',
-      error: '#ef4444',
-      info: '#3b82f6',
-    };
-
-    switch (type) {
-      case 'orders':
-        return {
-          labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-          datasets: [
-            {
-              label: 'Orders',
-              data: [65, 59, 80, 81, 56, 76],
-              backgroundColor: chartType === 'pie' || chartType === 'doughnut'
-                ? [colors.primary, colors.secondary, colors.success, colors.warning, colors.error, colors.info]
-                : colors.primary,
-              borderColor: colors.primary,
-              borderWidth: 2,
-              fill: chartType === 'line' ? false : true,
-            },
-          ],
-        };
-
-      case 'revenue':
-        return {
-          labels: ['Online Sales', 'In-Store Sales', 'Wholesale', 'Returns'],
-          datasets: [
-            {
-              label: 'Revenue ($)',
-              data: [8950, 3500, 2200, -450],
-              backgroundColor: chartType === 'pie' || chartType === 'doughnut'
-                ? [colors.success, colors.primary, colors.warning, colors.error]
-                : colors.success,
-              borderColor: colors.success,
-              borderWidth: 2,
-              fill: chartType === 'line' ? false : true,
-            },
-          ],
-        };
-
-      case 'customers':
-        return {
-          labels: ['New', 'Returning', 'VIP', 'Inactive'],
-          datasets: [
-            {
-              label: 'Customers',
-              data: [45, 89, 12, 23],
-              backgroundColor: chartType === 'pie' || chartType === 'doughnut'
-                ? [colors.info, colors.primary, colors.warning, colors.error]
-                : colors.info,
-              borderColor: colors.info,
-              borderWidth: 2,
-              fill: chartType === 'line' ? false : true,
-            },
-          ],
-        };
-
-      case 'avgOrderValue':
-      case 'avg_order':
-        return {
-          labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
-          datasets: [
-            {
-              label: 'Average Order Value ($)',
-              data: [125, 135, 142, 138],
-              backgroundColor: chartType === 'pie' || chartType === 'doughnut'
-                ? [colors.warning, colors.primary, colors.success, colors.secondary]
-                : colors.warning,
-              borderColor: colors.warning,
-              borderWidth: 2,
-              fill: chartType === 'line' ? false : true,
-            },
-          ],
-        };
-
-      default:
-        return {
-          labels: ['Data 1', 'Data 2', 'Data 3', 'Data 4'],
-          datasets: [
-            {
-              label: 'Values',
-              data: [10, 20, 30, 40],
-              backgroundColor: colors.primary,
-              borderColor: colors.primary,
-              borderWidth: 2,
-            },
-          ],
-        };
-    }
-  };
-
-  const getChartOptions = () => {
-    return {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          position: 'top',
-        },
-        title: {
-          display: true,
-          text: `${getModalTitle()} - ${chartType.charAt(0).toUpperCase() + chartType.slice(1)} Chart`,
-        },
-      },
-      scales: chartType === 'pie' || chartType === 'doughnut' ? {} : {
-        y: {
-          beginAtZero: true,
-        },
-      },
-    };
-  };
-
-  const renderChart = () => {
-    const chartData = getChartData();
-    const options = getChartOptions();
-
-    switch (chartType) {
-      case 'line':
-        return <Line data={chartData} options={options} />;
-      case 'bar':
-        return <Bar data={chartData} options={options} />;
-      case 'pie':
-        return <Pie data={chartData} options={options} />;
-      case 'doughnut':
-        return <Doughnut data={chartData} options={options} />;
-      default:
-        return <Bar data={chartData} options={options} />;
-    }
-  };
-
-  const handleDetailClose = () => {
-    setDetailModalOpen(false);
-    setDetailModalType(null);
-    setDetailModalSubType(null);
-  };
-
-  const getModalTitle = () => {
-    switch (type) {
-      case 'orders':
-        return 'Total Orders Analysis';
-      case 'revenue':
-        return 'Revenue Analysis';
-      case 'customers':
-        return 'Customer Locations Deep Analysis';
-      case 'avgOrderValue':
-      case 'avg_order':
-        return 'Average Order Value Analysis';
-      default:
-        return 'Analytics';
-    }
-  };
-
-  const getModalContent = () => {
-    switch (type) {
-      case 'orders':
-        return {
-          title: 'Total Orders Analysis',
-          icon: <ShoppingCart sx={{ fontSize: 40, color: 'primary.main' }} />,
-          content: (
-            <Grid container spacing={3}>
-              {/* Chart Type Selector */}
-              <Grid item xs={12}>
-                <Box display="flex" justifyContent="center" mb={2}>
-                  <ToggleButtonGroup
-                    value={chartType}
-                    exclusive
-                    onChange={handleChartTypeChange}
-                    aria-label="chart type"
-                    size="small"
-                  >
-                    <ToggleButton value="bar" aria-label="bar chart">
-                      <BarChart sx={{ mr: 1 }} />
-                      Bar
-                    </ToggleButton>
-                    <ToggleButton value="line" aria-label="line chart">
-                      <Timeline sx={{ mr: 1 }} />
-                      Line
-                    </ToggleButton>
-                    <ToggleButton value="pie" aria-label="pie chart">
-                      <PieChart sx={{ mr: 1 }} />
-                      Pie
-                    </ToggleButton>
-                    <ToggleButton value="doughnut" aria-label="doughnut chart">
-                      <PieChart sx={{ mr: 1 }} />
-                      Doughnut
-                    </ToggleButton>
-                  </ToggleButtonGroup>
-                </Box>
-              </Grid>
-
-              {/* Interactive Chart */}
-              <Grid item xs={12} md={8}>
-                <Card sx={{ height: 400, p: 2 }}>
-                  <Box height="100%">
-                    {renderChart()}
-                  </Box>
-                </Card>
-              </Grid>
-
-              {/* Statistics Card */}
-              <Grid item xs={12} md={4}>
-                <Card
-                  sx={{
-                    cursor: 'pointer',
-                    transition: 'all 0.3s ease',
-                    '&:hover': {
-                      transform: 'translateY(-2px)',
-                      boxShadow: 4,
-                    }
-                  }}
-                  onClick={() => handleDetailClick('trends')}
-                >
-                  <CardContent>
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                      <Typography variant="h6">
-                        Order Trends
-                      </Typography>
-                      <IconButton size="small" color="primary">
-                        <ZoomIn />
-                      </IconButton>
-                    </Box>
-                    <Box mb={2}>
-                      <Box display="flex" justifyContent="space-between" mb={1}>
-                        <Typography variant="body2">This Month</Typography>
-                        <Typography variant="body2" fontWeight="bold">156 orders</Typography>
-                      </Box>
-                      <LinearProgress variant="determinate" value={85} />
-                    </Box>
-                    <Box mb={2}>
-                      <Box display="flex" justifyContent="space-between" mb={1}>
-                        <Typography variant="body2">Last Month</Typography>
-                        <Typography variant="body2" fontWeight="bold">139 orders</Typography>
-                      </Box>
-                      <LinearProgress variant="determinate" value={75} />
-                    </Box>
-                    <Chip 
-                      icon={<TrendingUp />}
-                      label="+12% vs last month" 
-                      color="success" 
-                      size="small" 
-                    />
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <Card
-                  sx={{
-                    cursor: 'pointer',
-                    transition: 'all 0.3s ease',
-                    '&:hover': {
-                      transform: 'translateY(-2px)',
-                      boxShadow: 4,
-                    }
-                  }}
-                  onClick={() => handleDetailClick('categories')}
-                >
-                  <CardContent>
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                      <Typography variant="h6">
-                        Top Selling Categories
-                      </Typography>
-                      <IconButton size="small" color="primary">
-                        <ZoomIn />
-                      </IconButton>
-                    </Box>
-                    <List dense>
-                      <ListItem>
-                        <ListItemIcon><Category color="primary" /></ListItemIcon>
-                        <ListItemText 
-                          primary="Building Blocks" 
-                          secondary="45 orders this month" 
-                        />
-                      </ListItem>
-                      <ListItem>
-                        <ListItemIcon><Category color="primary" /></ListItemIcon>
-                        <ListItemText 
-                          primary="Action Figures" 
-                          secondary="38 orders this month" 
-                        />
-                      </ListItem>
-                      <ListItem>
-                        <ListItemIcon><Category color="primary" /></ListItemIcon>
-                        <ListItemText 
-                          primary="Educational Toys" 
-                          secondary="32 orders this month" 
-                        />
-                      </ListItem>
-                    </List>
-                  </CardContent>
-                </Card>
-              </Grid>
-            </Grid>
-          )
-        };
-
-      case 'revenue':
-        return {
-          title: 'Revenue Analysis',
-          icon: <AttachMoney sx={{ fontSize: 40, color: 'success.main' }} />,
-          content: (
-            <Grid container spacing={3}>
-              {/* Chart Type Selector */}
-              <Grid item xs={12}>
-                <Box display="flex" justifyContent="center" mb={2}>
-                  <ToggleButtonGroup
-                    value={chartType}
-                    exclusive
-                    onChange={handleChartTypeChange}
-                    aria-label="chart type"
-                    size="small"
-                  >
-                    <ToggleButton value="bar" aria-label="bar chart">
-                      <BarChart sx={{ mr: 1 }} />
-                      Bar
-                    </ToggleButton>
-                    <ToggleButton value="line" aria-label="line chart">
-                      <Timeline sx={{ mr: 1 }} />
-                      Line
-                    </ToggleButton>
-                    <ToggleButton value="pie" aria-label="pie chart">
-                      <PieChart sx={{ mr: 1 }} />
-                      Pie
-                    </ToggleButton>
-                    <ToggleButton value="doughnut" aria-label="doughnut chart">
-                      <PieChart sx={{ mr: 1 }} />
-                      Doughnut
-                    </ToggleButton>
-                  </ToggleButtonGroup>
-                </Box>
-              </Grid>
-
-              {/* Interactive Chart */}
-              <Grid item xs={12} md={8}>
-                <Card sx={{ height: 400, p: 2 }}>
-                  <Box height="100%">
-                    {renderChart()}
-                  </Box>
-                </Card>
-              </Grid>
-
-              {/* Statistics Card */}
-              <Grid item xs={12} md={4}>
-                <Card
-                  sx={{
-                    cursor: 'pointer',
-                    transition: 'all 0.3s ease',
-                    '&:hover': {
-                      transform: 'translateY(-2px)',
-                      boxShadow: 4,
-                    }
-                  }}
-                  onClick={() => handleDetailClick('breakdown')}
-                >
-                  <CardContent>
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                      <Typography variant="h6">
-                        Revenue Breakdown
-                      </Typography>
-                      <IconButton size="small" color="primary">
-                        <ZoomIn />
-                      </IconButton>
-                    </Box>
-                    <Box mb={2}>
-                      <Typography variant="body2" color="text.secondary">
-                        Total Revenue: <strong>${data?.total_revenue?.toLocaleString() || '12,450.00'}</strong>
-                      </Typography>
-                    </Box>
-                    <Box mb={2}>
-                      <Box display="flex" justifyContent="space-between" mb={1}>
-                        <Typography variant="body2">Online Sales</Typography>
-                        <Typography variant="body2" fontWeight="bold">$8,950</Typography>
-                      </Box>
-                      <LinearProgress variant="determinate" value={72} color="success" />
-                    </Box>
-                    <Box mb={2}>
-                      <Box display="flex" justifyContent="space-between" mb={1}>
-                        <Typography variant="body2">In-Store Sales</Typography>
-                        <Typography variant="body2" fontWeight="bold">$3,500</Typography>
-                      </Box>
-                      <LinearProgress variant="determinate" value={28} color="info" />
-                    </Box>
-                    <Chip 
-                      icon={<TrendingUp />}
-                      label="+8% vs last month" 
-                      color="success" 
-                      size="small" 
-                    />
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <Card>
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom>
-                      Top Revenue Products
-                    </Typography>
-                    <List dense>
-                      <ListItem>
-                        <ListItemText 
-                          primary="LEGO Creator Set" 
-                          secondary="$1,250 revenue" 
-                        />
-                        <Chip label="$89.99" size="small" color="success" />
-                      </ListItem>
-                      <ListItem>
-                        <ListItemText 
-                          primary="Remote Control Car" 
-                          secondary="$980 revenue" 
-                        />
-                        <Chip label="$79.99" size="small" color="success" />
-                      </ListItem>
-                      <ListItem>
-                        <ListItemText 
-                          primary="Educational Puzzle" 
-                          secondary="$750 revenue" 
-                        />
-                        <Chip label="$24.99" size="small" color="success" />
-                      </ListItem>
-                    </List>
-                  </CardContent>
-                </Card>
-              </Grid>
-            </Grid>
-          )
-        };
-
-      case 'customers':
-        return {
-          title: 'Customer Analytics',
-          icon: <People sx={{ fontSize: 40, color: 'secondary.main' }} />,
-          content: (
-            <Grid container spacing={3}>
-              {/* Chart Type Selector */}
-              <Grid item xs={12}>
-                <Box display="flex" justifyContent="center" mb={2}>
-                  <ToggleButtonGroup
-                    value={chartType}
-                    exclusive
-                    onChange={handleChartTypeChange}
-                    aria-label="chart type"
-                    size="small"
-                  >
-                    <ToggleButton value="bar" aria-label="bar chart">
-                      <BarChart sx={{ mr: 1 }} />
-                      Bar
-                    </ToggleButton>
-                    <ToggleButton value="line" aria-label="line chart">
-                      <Timeline sx={{ mr: 1 }} />
-                      Line
-                    </ToggleButton>
-                    <ToggleButton value="pie" aria-label="pie chart">
-                      <PieChart sx={{ mr: 1 }} />
-                      Pie
-                    </ToggleButton>
-                    <ToggleButton value="doughnut" aria-label="doughnut chart">
-                      <PieChart sx={{ mr: 1 }} />
-                      Doughnut
-                    </ToggleButton>
-                  </ToggleButtonGroup>
-                </Box>
-              </Grid>
-
-              {/* Interactive Chart */}
-              <Grid item xs={12} md={8}>
-                <Card sx={{ height: 400, p: 2 }}>
-                  <Box height="100%">
-                    {renderChart()}
-                  </Box>
-                </Card>
-              </Grid>
-
-              {/* Statistics Card */}
-              <Grid item xs={12} md={4}>
-                <Card
-                  sx={{
-                    cursor: 'pointer',
-                    transition: 'all 0.3s ease',
-                    '&:hover': {
-                      transform: 'translateY(-2px)',
-                      boxShadow: 4,
-                    }
-                  }}
-                  onClick={() => handleDetailClick('growth')}
-                >
-                  <CardContent>
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                      <Typography variant="h6">
-                        Customer Growth
-                      </Typography>
-                      <IconButton size="small" color="primary">
-                        <ZoomIn />
-                      </IconButton>
-                    </Box>
-                    <Box mb={2}>
-                      <Typography variant="body2" color="text.secondary">
-                        Total Customers: <strong>{data?.total_customers || '89'}</strong>
-                      </Typography>
-                    </Box>
-                    <Box mb={2}>
-                      <Box display="flex" justifyContent="space-between" mb={1}>
-                        <Typography variant="body2">New This Month</Typography>
-                        <Typography variant="body2" fontWeight="bold">12 customers</Typography>
-                      </Box>
-                      <LinearProgress variant="determinate" value={60} color="secondary" />
-                    </Box>
-                    <Box mb={2}>
-                      <Box display="flex" justifyContent="space-between" mb={1}>
-                        <Typography variant="body2">Returning Customers</Typography>
-                        <Typography variant="body2" fontWeight="bold">77 customers</Typography>
-                      </Box>
-                      <LinearProgress variant="determinate" value={85} color="primary" />
-                    </Box>
-                    <Chip 
-                      icon={<TrendingUp />}
-                      label="+15% vs last month" 
-                      color="success" 
-                      size="small" 
-                    />
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <Card
-                  sx={{
-                    cursor: 'pointer',
-                    transition: 'all 0.3s ease',
-                    '&:hover': {
-                      transform: 'translateY(-2px)',
-                      boxShadow: 4,
-                    }
-                  }}
-                  onClick={() => handleDetailClick('locations')}
-                >
-                  <CardContent>
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                      <Typography variant="h6">
-                        Top Customer Locations
-                      </Typography>
-                      <IconButton size="small" color="primary">
-                        <ZoomIn />
-                      </IconButton>
-                    </Box>
-                    <List dense>
-                      <ListItem>
-                        <ListItemIcon><LocationOn color="primary" /></ListItemIcon>
-                        <ListItemText 
-                          primary="Jamaica" 
-                          secondary="32 customers" 
-                        />
-                      </ListItem>
-                      <ListItem>
-                        <ListItemIcon><LocationOn color="primary" /></ListItemIcon>
-                        <ListItemText 
-                          primary="Trinidad & Tobago" 
-                          secondary="28 customers" 
-                        />
-                      </ListItem>
-                      <ListItem>
-                        <ListItemIcon><LocationOn color="primary" /></ListItemIcon>
-                        <ListItemText 
-                          primary="Barbados" 
-                          secondary="18 customers" 
-                        />
-                      </ListItem>
-                    </List>
-                  </CardContent>
-                </Card>
-              </Grid>
-            </Grid>
-          )
-        };
-
-      case 'avg_order':
-        return {
-          title: 'Average Order Value Analysis',
-          icon: <TrendingUp sx={{ fontSize: 40, color: 'warning.main' }} />,
-          content: (
-            <Grid container spacing={3}>
-              {/* Chart Type Selector */}
-              <Grid item xs={12}>
-                <Box display="flex" justifyContent="center" mb={2}>
-                  <ToggleButtonGroup
-                    value={chartType}
-                    exclusive
-                    onChange={handleChartTypeChange}
-                    aria-label="chart type"
-                    size="small"
-                  >
-                    <ToggleButton value="bar" aria-label="bar chart">
-                      <BarChart sx={{ mr: 1 }} />
-                      Bar
-                    </ToggleButton>
-                    <ToggleButton value="line" aria-label="line chart">
-                      <Timeline sx={{ mr: 1 }} />
-                      Line
-                    </ToggleButton>
-                    <ToggleButton value="pie" aria-label="pie chart">
-                      <PieChart sx={{ mr: 1 }} />
-                      Pie
-                    </ToggleButton>
-                    <ToggleButton value="doughnut" aria-label="doughnut chart">
-                      <PieChart sx={{ mr: 1 }} />
-                      Doughnut
-                    </ToggleButton>
-                  </ToggleButtonGroup>
-                </Box>
-              </Grid>
-
-              {/* Interactive Chart */}
-              <Grid item xs={12} md={8}>
-                <Card sx={{ height: 400, p: 2 }}>
-                  <Box height="100%">
-                    {renderChart()}
-                  </Box>
-                </Card>
-              </Grid>
-
-              {/* Statistics Card */}
-              <Grid item xs={12} md={4}>
-                <Card>
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom>
-                      Order Value Trends
-                    </Typography>
-                    <Box mb={2}>
-                      <Typography variant="body2" color="text.secondary">
-                        Current AOV: <strong>${data?.avg_order_value?.toFixed(2) || '79.85'}</strong>
-                      </Typography>
-                    </Box>
-                    <Box mb={2}>
-                      <Box display="flex" justifyContent="space-between" mb={1}>
-                        <Typography variant="body2">High Value Orders (&gt;$100)</Typography>
-                        <Typography variant="body2" fontWeight="bold">23%</Typography>
-                      </Box>
-                      <LinearProgress variant="determinate" value={23} color="success" />
-                    </Box>
-                    <Box mb={2}>
-                      <Box display="flex" justifyContent="space-between" mb={1}>
-                        <Typography variant="body2">Medium Value ($50-$100)</Typography>
-                        <Typography variant="body2" fontWeight="bold">45%</Typography>
-                      </Box>
-                      <LinearProgress variant="determinate" value={45} color="warning" />
-                    </Box>
-                    <Box mb={2}>
-                      <Box display="flex" justifyContent="space-between" mb={1}>
-                        <Typography variant="body2">Low Value (&lt;$50)</Typography>
-                        <Typography variant="body2" fontWeight="bold">32%</Typography>
-                      </Box>
-                      <LinearProgress variant="determinate" value={32} color="info" />
-                    </Box>
-                    <Chip 
-                      icon={<TrendingUp />}
-                      label="+5% vs last month" 
-                      color="success" 
-                      size="small" 
-                    />
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <Card>
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom>
-                      Order Insights
-                    </Typography>
-                    <List dense>
-                      <ListItem>
-                        <ListItemText 
-                          primary="Peak Order Time" 
-                          secondary="2:00 PM - 4:00 PM" 
-                        />
-                      </ListItem>
-                      <Divider />
-                      <ListItem>
-                        <ListItemText 
-                          primary="Average Items per Order" 
-                          secondary="2.3 items" 
-                        />
-                      </ListItem>
-                      <Divider />
-                      <ListItem>
-                        <ListItemText 
-                          primary="Most Popular Day" 
-                          secondary="Saturday" 
-                        />
-                      </ListItem>
-                      <Divider />
-                      <ListItem>
-                        <ListItemText 
-                          primary="Repeat Customer Rate" 
-                          secondary="68%" 
-                        />
-                      </ListItem>
-                    </List>
-                  </CardContent>
-                </Card>
-              </Grid>
-            </Grid>
-          )
-        };
-
-      default:
-        return {
-          title: 'Dashboard Details',
-          icon: <TrendingUp sx={{ fontSize: 40 }} />,
-          content: <Typography>No details available</Typography>
-        };
-    }
-  };
-
-  const modalContent = getModalContent();
-
   return (
-    <Dialog 
-      open={open} 
-      onClose={onClose} 
-      maxWidth="lg" 
-      fullWidth
-      PaperProps={{
-        sx: { borderRadius: 3 }
-      }}
-    >
-      <DialogTitle sx={{ pb: 1 }}>
-        <Box display="flex" alignItems="center" justifyContent="space-between">
-          <Box display="flex" alignItems="center">
-            {modalContent.icon}
-            <Box ml={2}>
-              <Typography variant="h5" component="h2">
-                {modalContent.title}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Detailed insights and analytics • Click sections with 🔍 for deeper analysis
-              </Typography>
-            </Box>
-          </Box>
-          <IconButton onClick={onClose} size="large">
-            <Close />
-          </IconButton>
+    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
+      <DialogTitle>
+        <Box display="flex" justifyContent="space-between" alignItems="center">
+          <Typography variant="h5" component="h2">
+            {getModalTitle()}
+          </Typography>
+          <Button onClick={onClose} color="inherit">
+            ✕
+          </Button>
         </Box>
       </DialogTitle>
-
       <DialogContent>
-        {modalContent.content}
+        {loading ? (
+          <Box display="flex" justifyContent="center" alignItems="center" height={400}>
+            <CircularProgress />
+          </Box>
+        ) : (
+          <Grid container spacing={3}>
+            {/* Chart Type Selector */}
+            <Grid item xs={12}>
+              <Box display="flex" justifyContent="center" mb={2}>
+                <ToggleButtonGroup
+                  value={chartType}
+                  exclusive
+                  onChange={handleChartTypeChange}
+                  aria-label="chart type"
+                >
+                  <ToggleButton value="line" aria-label="line chart">
+                    Line
+                  </ToggleButton>
+                  <ToggleButton value="bar" aria-label="bar chart">
+                    Bar
+                  </ToggleButton>
+                  <ToggleButton value="pie" aria-label="pie chart">
+                    Pie
+                  </ToggleButton>
+                  <ToggleButton value="doughnut" aria-label="doughnut chart">
+                    Doughnut
+                  </ToggleButton>
+                </ToggleButtonGroup>
+              </Box>
+            </Grid>
+
+            {/* Chart Section */}
+            <Grid item xs={12} md={8}>
+              <Card sx={{ p: 2, height: 400 }}>
+                <Box sx={{ height: '100%', position: 'relative' }}>
+                  {renderChart()}
+                </Box>
+              </Card>
+            </Grid>
+            
+            {/* Stats Section */}
+            <Grid item xs={12} md={4}>
+              <Card sx={{ p: 3, height: 400 }}>
+                <Typography variant="h6" gutterBottom>
+                  Key Metrics
+                </Typography>
+                {(() => {
+                  const stats = getModalStats();
+                  return (
+                    <Box>
+                      <Typography variant="h3" color="primary" gutterBottom>
+                        {stats.total?.toLocaleString()}
+                      </Typography>
+                      <Typography variant="body2" color="success.main" gutterBottom>
+                        {stats.growth} {stats.period}
+                      </Typography>
+                      
+                      {/* Order Status Breakdown */}
+                      {stats.breakdown && (
+                        <Box mt={3}>
+                          <Typography variant="subtitle2" gutterBottom>
+                            Order Status Breakdown:
+                          </Typography>
+                          {stats.breakdown.map((item, index) => (
+                            <Box key={index} display="flex" justifyContent="space-between" mb={1}>
+                              <Typography variant="body2">{item.status}:</Typography>
+                              <Typography variant="body2" fontWeight="bold">
+                                {item.count} ({item.percentage}%)
+                              </Typography>
+                            </Box>
+                          ))}
+                        </Box>
+                      )}
+                      
+                      {/* Additional Metrics */}
+                      {stats.additionalMetrics && (
+                        <Box mt={3}>
+                          <Typography variant="subtitle2" gutterBottom>
+                            Additional Metrics:
+                          </Typography>
+                          <Typography variant="body2">
+                            Avg Processing: {stats.additionalMetrics.avgProcessingTime}
+                          </Typography>
+                          <Typography variant="body2">
+                            Revenue Growth: {stats.additionalMetrics.revenueGrowth}
+                          </Typography>
+                        </Box>
+                      )}
+                    </Box>
+                  );
+                })()}
+              </Card>
+            </Grid>
+          </Grid>
+        )}
       </DialogContent>
-
-      <DialogActions sx={{ px: 3, pb: 3 }}>
-        <Button onClick={onClose} color="inherit">
-          Close
-        </Button>
-        <Button variant="contained">
-          Export Report
-        </Button>
+      <DialogActions>
+        <Button onClick={onClose}>Close</Button>
+        <Button variant="outlined">Export Report</Button>
       </DialogActions>
-
-      {/* Detailed Breakdown Modal */}
-      <DetailedBreakdownModal
-        open={detailModalOpen}
-        onClose={handleDetailClose}
-        type={detailModalType}
-        subType={detailModalSubType}
-        data={data}
-      />
     </Dialog>
   );
-};
-
-export default DashboardDetailModal;
+}

@@ -1,17 +1,31 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppBar, Toolbar, Typography, Button, Box } from '@mui/material';
 import { Link, useNavigate } from 'react-router-dom';
 import { logout, isAuthenticated } from '../services/authService';
 
 const Navbar = () => {
   const navigate = useNavigate();
+  const [authenticated, setAuthenticated] = useState(isAuthenticated());
+
+  useEffect(() => {
+    const handleAuthChange = () => {
+      setAuthenticated(isAuthenticated());
+    };
+
+    window.addEventListener('auth-change', handleAuthChange);
+    
+    return () => {
+      window.removeEventListener('auth-change', handleAuthChange);
+    };
+  }, []);
 
   const handleLogout = () => {
     logout();
+    setAuthenticated(false);
     navigate('/login');
   };
 
-  if (!isAuthenticated()) {
+  if (!authenticated) {
     return null;
   }
 

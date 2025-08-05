@@ -1,52 +1,34 @@
-// src/services/dashboardService.js
 import api from './api';
 
-export const getDashboardStats = async () => {
-  try {
+export const dashboardService = {
+  async getDashboardStats() {
     const response = await api.get('/api/dashboard/stats');
     return response.data;
-  } catch (error) {
-    console.error('Error fetching dashboard stats:', error);
-    throw error;
-  }
-};
+  },
 
-export const getRecentOrders = async () => {
-  try {
+  async getRecentOrders() {
     const response = await api.get('/api/dashboard/recent-orders');
     return response.data;
-  } catch (error) {
-    console.error('Error fetching recent orders:', error);
-    throw error;
-  }
-};
+  },
 
-export const getMonthlyRevenue = async () => {
-  try {
+  async getMonthlyRevenue() {
     const response = await api.get('/api/dashboard/monthly-revenue');
     return response.data;
-  } catch (error) {
-    console.error('Error fetching monthly revenue:', error);
-    throw error;
-  }
+  },
+
+  async getCustomerAnalytics() {
+    const response = await api.get('/api/reports/customers/analytics');
+    return response.data;
+  },
+
+  async getDetailedBreakdown(type, subType) {
+    const response = await api.get(`/api/dashboard/breakdown/${type}/${subType}`);
+    return response.data;
+  },
 };
 
-// Backward compatibility aliases
-export const getWeeklyOrders = getRecentOrders;
-export const getPopularProducts = getMonthlyRevenue;
-
-// For backward compatibility
-export async function fetchDashboardData() {
-  const [stats, recentOrders, monthlyRevenue] = await Promise.all([
-    getDashboardStats(),
-    getRecentOrders(),
-    getMonthlyRevenue()
-  ]);
-
-  return {
-    ...stats,
-    recent_orders: recentOrders,
-    monthly_revenue: monthlyRevenue,
-    customer_locations: stats.top_shipping_countries || []
-  };
-}
+// Export individual functions for backward compatibility
+export const getDashboardStats = dashboardService.getDashboardStats;
+export const getRecentOrders = dashboardService.getRecentOrders;
+export const getMonthlyRevenue = dashboardService.getMonthlyRevenue;
+export const getCustomerAnalytics = dashboardService.getCustomerAnalytics;

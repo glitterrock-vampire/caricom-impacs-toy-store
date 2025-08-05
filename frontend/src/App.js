@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
@@ -9,21 +9,40 @@ import InventoryPage from './pages/InventoryPage';
 import CustomersPage from './pages/CustomersPage';
 import OrdersPage from './pages/OrdersPage';
 import AccountManagementPage from './pages/AccountManagementPage';
+import UserManagementPage from './pages/UserManagementPage'; 
 import LoginPage from './pages/LoginPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import { isAuthenticated } from './services/authService';
 
 function App() {
+  const [authenticated, setAuthenticated] = useState(isAuthenticated());
+
+  useEffect(() => {
+    // Listen for authentication changes
+    const handleAuthChange = () => {
+      setAuthenticated(isAuthenticated());
+    };
+
+    window.addEventListener('auth-change', handleAuthChange);
+    
+    // Also check on mount
+    setAuthenticated(isAuthenticated());
+
+    return () => {
+      window.removeEventListener('auth-change', handleAuthChange);
+    };
+  }, []);
+
   return (
     <ThemeProvider theme={muiTheme}>
       <CssBaseline />
       <Router>
         <div className="App">
-          {isAuthenticated() && <Navbar />}
+          {authenticated && <Navbar />}
           <Routes>
             <Route 
               path="/login" 
-              element={!isAuthenticated() ? <LoginPage /> : <Navigate to="/dashboard" />} 
+              element={!authenticated ? <LoginPage /> : <Navigate to="/dashboard" />} 
             />
             <Route path="/" element={<Navigate to="/dashboard" />} />
             <Route 

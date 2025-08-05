@@ -1,17 +1,19 @@
 import api from './api';
 
-export const TOKEN_KEY = 'auth_token';
+const TOKEN_KEY = 'token';
+
+export const setToken = (token) => {
+  localStorage.setItem(TOKEN_KEY, token);
+  api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+};
 
 export const getToken = () => {
   return localStorage.getItem(TOKEN_KEY);
 };
 
-export const setToken = (token) => {
-  localStorage.setItem(TOKEN_KEY, token);
-};
-
 export const removeToken = () => {
   localStorage.removeItem(TOKEN_KEY);
+  delete api.defaults.headers.common['Authorization'];
 };
 
 export const isAuthenticated = () => {
@@ -19,11 +21,23 @@ export const isAuthenticated = () => {
   return !!token;
 };
 
+// Initialize auth header on app start
+export const initAuthHeader = () => {
+  const token = getToken();
+  if (token) {
+    api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+  }
+};
+
 export const login = async (email, password) => {
   try {
-    const response = await api.post('/auth/login', { email, password });
+    const response = await api.post('/api/auth/login', { email, password });
     const { token } = response.data;
     setToken(token);
+    
+    // Force a page refresh or state update to trigger navbar re-render
+    window.dispatchEvent(new Event('auth-change'));
+    
     return response.data;
   } catch (error) {
     console.error('Login error:', error);
@@ -33,17 +47,12 @@ export const login = async (email, password) => {
 
 export const logout = () => {
   removeToken();
+  
+  // Force a page refresh or state update to trigger navbar re-render
+  window.dispatchEvent(new Event('auth-change'));
 };
 
-// Initialize auth header
-const initAuthHeader = () => {
-  const token = getToken();
-  if (token) {
-    api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-  }
-};
-
-// Call on module load
+// Initialize on module load
 initAuthHeader();
 
 export const authService = {
@@ -56,10 +65,22 @@ export const authService = {
 
   async getCurrentUser() {
     try {
-      const response = await api.get('/auth/me');
-      return response.data;
+      const token = getToken();
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+      
+      const response = await api.get('/api/auth/profile');
+      return response.data.user;
     } catch (error) {
-      console.error('Error fetching current user:', error);
+      console.error('Get current user error:', error);
+      
+      // If 401 or 404, user is not authenticated
+      if (error.response?.status === 401 || error.response?.status === 404) {
+        removeToken();
+        window.location.href = '/login';
+      }
+      
       throw error;
     }
   },

@@ -1,551 +1,558 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Container,
+  Alert,
+  Box,
+  Button,
   Card,
   CardContent,
-  Typography,
-  Box,
   CircularProgress,
-  Alert,
+  Container,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   Grid,
+  IconButton,
+  Snackbar,
+  ToggleButton,
+  ToggleButtonGroup,
+  Typography
 } from '@mui/material';
 import {
-  Assessment,
-  ShoppingCart,
-  AttachMoney,
-  People,
-  TrendingUp,
-  Public,
-  Toys,
-  DirectionsCar,
-  Extension,
-  SportsEsports,
+  Assessment as DashboardIcon,
+  Refresh as RefreshIcon,
+  Delete as DeleteIcon,
+  PictureAsPdf as PdfIcon,
+  Close as CloseIcon,
+  ShoppingCart as ShoppingCartIcon,
+  Category as CategoryIcon
 } from '@mui/icons-material';
+import { DataGrid } from '@mui/x-data-grid';
+import { Bar, Pie } from 'react-chartjs-2';
+import { ComposableMap, Geographies, Geography, Marker } from 'react-simple-maps';
+import { jsPDF } from 'jspdf';
+import 'jspdf-autotable';
+import api from '../services/api';
+
+// Chart.js setup
 import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
-  PointElement,
-  LineElement,
   BarElement,
   Title,
-  Tooltip,
+  Tooltip as ChartTooltip,
   Legend,
-  ArcElement,
+  ArcElement
 } from 'chart.js';
-import { Line, Bar, Pie, Doughnut } from 'react-chartjs-2';
-import api from '../services/api';
-import MuiStatCard from '../components/MuiStatCard';
-import DashboardDetailModal from '../components/DashboardDetailModal';
 
-// Register Chart.js components
 ChartJS.register(
   CategoryScale,
   LinearScale,
-  PointElement,
-  LineElement,
   BarElement,
   Title,
-  Tooltip,
+  ChartTooltip,
   Legend,
   ArcElement
 );
 
-export default function DashboardPage() {
-  const [stats, setStats] = useState(null);
+// World map URL
+const geoUrl = 'https://raw.githubusercontent.com/zcreativelabs/react-simple-maps/master/topojson-maps/world-110m.json';
+
+const DashboardPage = () => {
+  // State management
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modalType, setModalType] = useState(null);
+  const [stats, setStats] = useState({
+    totalCustomers: 0,
+    ordersThisWeek: Array(7).fill(0),
+    categoryDistribution: {},
+    customerLocations: []
+  });
+  const [customers, setCustomers] = useState([]);
+  const [selectedCustomers, setSelectedCustomers] = useState([]);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '' });
+  const [timeRange, setTimeRange] = useState('week');
+  const [autoRefresh, setAutoRefresh] = useState(true);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-
-        // Get dashboard stats from backend API
-        const response = await api.get('/api/dashboard/stats');
-        setStats(response.data);
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
+  // Fetch dashboard data
+  const fetchDashboardData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const [statsRes, customersRes] = await Promise.all([
+        api.get('/api/dashboard/stats'),
+        api.get('/api/customers')
+      ]);
+      
+      // Ensure we have valid data before setting state
+      if (statsRes?.data) {
+        setStats({
+          totalCustomers: statsRes.data.totalCustomers || 0,
+          ordersThisWeek: Array.isArray(statsRes.data.ordersThisWeek) ? statsRes.data.ordersThisWeek : Array(7).fill(0),
+          categoryDistribution: statsRes.data.categoryDistribution || {},
+          customerLocations: Array.isArray(statsRes.data.customerLocations) ? statsRes.data.customerLocations : []
+        });
       }
-    };
-    fetchData();
+      
+      if (customersRes?.data) {
+        setCustomers(Array.isArray(customersRes.data) ? customersRes.data : []);
+      }
+      
+      setError(null);
+    } catch (err) {
+      console.error('Error fetching dashboard data:', err);
+      setError('Failed to load dashboard data. Please try again.');
+      setSnackbar({ open: true, message: 'Error loading dashboard data' });
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const handleCardClick = (type) => {
-    console.log('Card clicked:', type); // Debug log
-    setModalType(type);
-    setModalOpen(true);
-  };
-
-  const handleCloseModal = () => {
-    setModalOpen(false);
-    setModalType(null);
-  };
-
-  // Chart data generation functions using real data
-  const getOrderTrendsData = () => {
-    if (!stats.monthlyOrders) return { labels: [], datasets: [] };
+  // Auto-refresh effect
+  useEffect(() => {
+    fetchDashboardData();
     
-    return {
-      labels: stats.monthlyOrders.map(item => item.month),
-      datasets: [
-        {
-          label: 'Orders',
-          data: stats.monthlyOrders.map(item => item.count),
-          borderColor: '#6366f1',
-          backgroundColor: 'rgba(99, 102, 241, 0.1)',
-          borderWidth: 3,
-          fill: true,
-          tension: 0.4,
-        },
-      ],
-    };
-  };
-
-  const getRevenueDistributionData = () => {
-    if (!stats.statusBreakdown) return { labels: [], datasets: [] };
+    let interval;
+    if (autoRefresh) {
+      interval = setInterval(fetchDashboardData, 30000); // 30 seconds
+    }
     
-    const statuses = Object.keys(stats.statusBreakdown);
-    const counts = Object.values(stats.statusBreakdown);
+    return () => clearInterval(interval);
+  }, [autoRefresh, fetchDashboardData]);
+
+  // Handle customer selection
+  const handleSelectionChange = (newSelection) => {
+    setSelectedCustomers(newSelection);
+  };
+
+  // Handle customer deletion
+  const handleDeleteCustomers = async () => {
+    try {
+      await Promise.all(
+        selectedCustomers.map(id => 
+          api.delete(`/api/customers/${id}`)
+        )
+      );
+      
+      setSnackbar({ open: true, message: 'Selected customers deleted successfully' });
+      setDeleteDialogOpen(false);
+      fetchDashboardData();
+    } catch (err) {
+      console.error('Error deleting customers:', err);
+      setSnackbar({ open: true, message: 'Error deleting customers' });
+    }
+  };
+
+  // Export to PDF
+  const exportToPdf = () => {
+    const doc = new jsPDF();
     
-    return {
-      labels: statuses.map(status => status.charAt(0).toUpperCase() + status.slice(1)),
-      datasets: [
-        {
-          data: counts,
-          backgroundColor: [
-            '#10b981', '#6366f1', '#f59e0b', '#ef4444', '#8b5cf6'
-          ],
-          borderWidth: 0,
-        },
-      ],
-    };
+    // Title
+    doc.setFontSize(20);
+    doc.text('Customer Report', 14, 22);
+    doc.setFontSize(12);
+    doc.setTextColor(100);
+    doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 30);
+    
+    // Customer data table
+    doc.autoTable({
+      head: [['ID', 'Name', 'Email', 'Country', 'Total Orders']],
+      body: customers.map(customer => [
+        customer.id,
+        customer.name,
+        customer.email,
+        customer.country,
+        customer.orderCount || 0
+      ]),
+      startY: 40,
+      styles: { fontSize: 10 },
+      headStyles: { fillColor: [63, 81, 181] }
+    });
+    
+    // Save the PDF
+    doc.save(`customer-report-${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
-  const getTopProductsData = () => {
-    return {
-      labels: ['LEGO Sets', 'Action Figures', 'Educational', 'Remote Cars', 'Puzzles'],
-      datasets: [
-        {
-          label: 'Sales',
-          data: [45, 38, 32, 28, 22],
-          backgroundColor: '#8b5cf6',
-          borderRadius: 8,
-        },
-      ],
-    };
+  // Chart data preparation with null checks
+  const weeklyOrdersData = {
+    labels: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+    datasets: [
+      {
+        label: 'Orders',
+        data: Array.isArray(stats?.ordersThisWeek) ? stats.ordersThisWeek : Array(7).fill(0),
+        backgroundColor: 'rgba(54, 162, 235, 0.6)',
+        borderColor: 'rgba(54, 162, 235, 1)',
+        borderWidth: 1,
+      },
+    ],
   };
 
-  const getCustomerSegmentData = () => {
-    return {
-      labels: ['New', 'Returning', 'VIP', 'Inactive'],
-      datasets: [
-        {
-          data: [45, 89, 12, 23],
-          backgroundColor: [
-            '#3b82f6',
-            '#10b981',
-            '#f59e0b',
-            '#ef4444',
-          ],
-          borderWidth: 0,
-        },
-      ],
-    };
+  // Prepare category distribution data
+  const categoryDistribution = stats?.categoryDistribution || {};
+  const categoryData = {
+    labels: Object.keys(categoryDistribution),
+    datasets: [
+      {
+        data: Object.values(categoryDistribution),
+        backgroundColor: [
+          'rgba(255, 99, 132, 0.6)',
+          'rgba(54, 162, 235, 0.6)',
+          'rgba(255, 206, 86, 0.6)',
+          'rgba(75, 192, 192, 0.6)',
+          'rgba(153, 102, 255, 0.6)',
+        ],
+        borderColor: [
+          'rgba(255, 99, 132, 1)',
+          'rgba(54, 162, 235, 1)',
+          'rgba(255, 206, 86, 1)',
+          'rgba(75, 192, 192, 1)',
+          'rgba(153, 102, 255, 1)',
+        ],
+        borderWidth: 1,
+      },
+    ],
   };
 
+  // DataGrid columns
+  const columns = [
+    { field: 'id', headerName: 'ID', width: 70 },
+    { field: 'name', headerName: 'Name', width: 200 },
+    { field: 'email', headerName: 'Email', width: 250 },
+    { field: 'country', headerName: 'Country', width: 150 },
+    { field: 'orderCount', headerName: 'Orders', width: 100 },
+    {
+      field: 'actions',
+      headerName: 'Actions',
+      width: 120,
+      sortable: false,
+      renderCell: (params) => (
+        <IconButton
+          size="small"
+          onClick={() => {
+            setSelectedCustomers([params.id]);
+            setDeleteDialogOpen(true);
+          }}
+        >
+          <DeleteIcon fontSize="small" color="error" />
+        </IconButton>
+      ),
+    },
+  ];
+
+  // Chart options
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
       legend: {
-        position: 'bottom',
-        labels: {
-          padding: 15,
-          usePointStyle: true,
-          font: {
-            size: 12
-          }
-        },
+        position: 'top',
       },
     },
-  };
-
-  const lineChartOptions = {
-    ...chartOptions,
     scales: {
       y: {
         beginAtZero: true,
-        grid: {
-          color: 'rgba(0,0,0,0.1)',
-        },
         ticks: {
-          font: {
-            size: 11
-          }
-        }
-      },
-      x: {
-        grid: {
-          display: false,
-        },
-        ticks: {
-          font: {
-            size: 11
-          }
+          precision: 0
         }
       },
     },
   };
 
-  const barChartOptions = {
-    ...chartOptions,
-    scales: {
-      y: {
-        beginAtZero: true,
-        grid: {
-          color: 'rgba(0,0,0,0.1)',
-        },
-        ticks: {
-          font: {
-            size: 11
-          }
-        }
-      },
-      x: {
-        grid: {
-          display: false,
-        },
-        ticks: {
-          font: {
-            size: 11
-          }
-        }
-      },
+  // Summary cards data
+  const summaryCards = [
+    {
+      title: 'Total Customers',
+      value: stats?.totalCustomers || 0,
+      icon: <DashboardIcon color="primary" />,
+      color: 'primary',
     },
-  };
+    {
+      title: 'Orders This Week',
+      value: Array.isArray(stats?.ordersThisWeek) ? 
+        stats.ordersThisWeek.reduce((a, b) => a + b, 0) : 0,
+      icon: <ShoppingCartIcon color="secondary" />,
+      color: 'secondary',
+    },
+    {
+      title: 'Categories',
+      value: stats?.categoryDistribution ? 
+        Object.keys(stats.categoryDistribution).length : 0,
+      icon: <CategoryIcon color="success" />,
+      color: 'success',
+    },
+  ];
 
   if (loading) {
     return (
-      <Box
-        display="flex"
-        justifyContent="center"
-        alignItems="center"
-        minHeight="100vh"
-        sx={{
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
-        }}
-      >
-        <Box textAlign="center" color="white">
-          <CircularProgress size={60} sx={{ color: 'white', mb: 3 }} />
-          <Typography variant="h5" component="h2">
-            Loading Dashboard...
-          </Typography>
-        </Box>
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="80vh">
+        <CircularProgress />
       </Box>
     );
   }
 
   if (error) {
     return (
-      <Box
-        display="flex"
-        justifyContent="center"
-        alignItems="center"
-        minHeight="100vh"
-        sx={{
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-          p: 3
-        }}
-      >
-        <Card sx={{ maxWidth: 500, textAlign: 'center' }}>
-          <CardContent sx={{ p: 5 }}>
-            <Alert severity="error" sx={{ mb: 3 }}>
-              Error Loading Dashboard
-            </Alert>
-            <Typography variant="body1" color="text.secondary">
-              {error}
-            </Typography>
-          </CardContent>
-        </Card>
-      </Box>
+      <Container maxWidth="md" sx={{ mt: 4 }}>
+        <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>
+        <Button
+          variant="contained"
+          color="primary"
+          startIcon={<RefreshIcon />}
+          onClick={fetchDashboardData}
+        >
+          Retry
+        </Button>
+      </Container>
     );
   }
 
   return (
-    <Box
-      sx={{
-        minHeight: '100vh',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-        p: 3,
-      }}
-    >
-      <Container maxWidth="xl">
-        <Box textAlign="center" mb={5}>
-          <Box display="flex" justifyContent="center" alignItems="center" mb={2}>
-            <Assessment sx={{ fontSize: 48, color: 'white', mr: 2 }} />
-            <Typography
-              variant="h2"
-              component="h1"
-              sx={{
-                color: 'white',
-                fontWeight: 800,
-                textShadow: '0 4px 8px rgba(0,0,0,0.3)'
-              }}
-            >
-              Toy Store Dashboard
-            </Typography>
-          </Box>
-          <Typography
-            variant="h6"
-            sx={{
-              color: 'rgba(255,255,255,0.9)',
-              fontWeight: 500
-            }}
-          >
-            Real-time insights into your business performance
+    <Container maxWidth="xl">
+      {/* Header */}
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+        <Box display="flex" alignItems="center">
+          <DashboardIcon sx={{ mr: 1, fontSize: 30 }} color="primary" />
+          <Typography variant="h4" component="h1">
+            Dashboard
           </Typography>
         </Box>
+        <Box>
+          <ToggleButtonGroup
+            value={timeRange}
+            exclusive
+            onChange={(e, newRange) => setTimeRange(newRange)}
+            size="small"
+            sx={{ mr: 2 }}
+          >
+            <ToggleButton value="week">This Week</ToggleButton>
+            <ToggleButton value="month">This Month</ToggleButton>
+          </ToggleButtonGroup>
+          <Button
+            variant="outlined"
+            startIcon={<RefreshIcon />}
+            onClick={fetchDashboardData}
+            sx={{ mr: 2 }}
+          >
+            Refresh
+          </Button>
+          <ToggleButton
+            value="auto"
+            selected={autoRefresh}
+            onChange={() => setAutoRefresh(!autoRefresh)}
+            size="small"
+            sx={{ mr: 2 }}
+          >
+            Auto-refresh {autoRefresh ? 'ON' : 'OFF'}
+          </ToggleButton>
+        </Box>
+      </Box>
 
-      <Grid container spacing={3} sx={{ mb: 5 }}>
-        {/* Total Orders Card */}
-        <Grid item xs={12} sm={6} md={3}>
-          <MuiStatCard
-            title="Total Orders"
-            icon={ShoppingCart}
-            value={stats?.totalOrders?.toLocaleString() || stats?.total_orders?.toLocaleString() || '0'}
-            growth="+12% from last month"
-            color="#3b82f6"
-            background="#dbeafe"
-            onClick={() => handleCardClick('orders')}
-          />
-        </Grid>
-
-        {/* Total Revenue Card */}
-        <Grid item xs={12} sm={6} md={3}>
-          <MuiStatCard
-            title="Total Revenue"
-            icon={AttachMoney}
-            value={`$${(stats?.totalRevenue || stats?.total_revenue || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`}
-            growth="+8% from last month"
-            color="#10b981"
-            background="#dcfce7"
-            onClick={() => handleCardClick('revenue')}
-          />
-        </Grid>
-
-        {/* Total Customers Card */}
-        <Grid item xs={12} sm={6} md={3}>
-          <MuiStatCard
-            title="Total Customers"
-            icon={People}
-            value={stats?.total_customers?.toLocaleString() || '0'}
-            growth="+15% from last month"
-            color="#8b5cf6"
-            background="#f3e8ff"
-            onClick={() => handleCardClick('customers')}
-          />
-        </Grid>
-
-        {/* Average Order Value Card */}
-        <Grid item xs={12} sm={6} md={3}>
-          <MuiStatCard
-            title="Avg Order Value"
-            icon={TrendingUp}
-            value={`$${(stats?.avgOrderValue || stats?.avg_order_value || 0).toFixed(2)}`}
-            growth="+5% from last month"
-            color="#f59e0b"
-            background="#fef3c7"
-            onClick={() => handleCardClick('avg_order')}
-          />
-        </Grid>
+      {/* Summary Cards */}
+      <Grid container spacing={3}>
+        {summaryCards.map((card, index) => (
+          <Grid item xs={12} md={4} key={index}>
+            <Card>
+              <CardContent>
+                <Box display="flex" justifyContent="space-between" alignItems="center">
+                  <div>
+                    <Typography color="textSecondary" gutterBottom>
+                      {card.title}
+                    </Typography>
+                    <Typography variant="h4">{card.value}</Typography>
+                  </div>
+                  <Box
+                    sx={{
+                      backgroundColor: `${card.color}.light`,
+                      borderRadius: '50%',
+                      width: 56,
+                      height: 56,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {React.cloneElement(card.icon, { sx: { fontSize: 30 } })}
+                  </Box>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+        ))}
       </Grid>
 
-      {/* Charts Grid */}
-      <Grid container spacing={4} sx={{ mb: 4 }}>
-        {/* Order Trends Line Chart */}
-        <Grid item xs={12} lg={6}>
-          <Card sx={{
-            borderRadius: 3,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
-            height: 350
-          }}>
-            <CardContent sx={{ p: 2 }}>
-              <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold', mb: 2 }}>
-                Order Trends
-              </Typography>
-              <Box sx={{ height: 280, position: 'relative' }}>
-                <Line data={getOrderTrendsData()} options={lineChartOptions} />
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Customer Segments Doughnut Chart */}
-        <Grid item xs={12} lg={6}>
-          <Card sx={{
-            borderRadius: 3,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
-            height: 350
-          }}>
-            <CardContent sx={{ p: 2 }}>
-              <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold', mb: 2 }}>
-                Customer Segments
-              </Typography>
-              <Box sx={{ height: 280, position: 'relative' }}>
-                <Doughnut data={getCustomerSegmentData()} options={chartOptions} />
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Revenue Distribution Pie Chart */}
+      {/* Charts Row */}
+      <Grid container spacing={3} sx={{ mt: 2 }}>
+        {/* Orders Chart */}
         <Grid item xs={12} md={6}>
-          <Card sx={{
-            borderRadius: 3,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
-            height: 350
-          }}>
-            <CardContent sx={{ p: 2 }}>
-              <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold', mb: 2 }}>
-                Revenue Distribution
-              </Typography>
-              <Box sx={{ height: 280, position: 'relative' }}>
-                <Pie data={getRevenueDistributionData()} options={chartOptions} />
+          <Card sx={{ height: 400 }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>Weekly Orders</Typography>
+              <Box sx={{ height: 300 }}>
+                <Bar data={weeklyOrdersData} options={chartOptions} />
               </Box>
             </CardContent>
           </Card>
         </Grid>
 
-        {/* Top Products Bar Chart */}
+        {/* Category Distribution */}
         <Grid item xs={12} md={6}>
-          <Card sx={{
-            borderRadius: 3,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
-            height: 350
-          }}>
-            <CardContent sx={{ p: 2 }}>
-              <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold', mb: 2 }}>
-                Top Products
-              </Typography>
-              <Box sx={{ height: 280, position: 'relative' }}>
-                <Bar data={getTopProductsData()} options={barChartOptions} />
+          <Card sx={{ height: 400 }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>Category Distribution</Typography>
+              <Box sx={{ height: 300 }}>
+                <Pie data={categoryData} options={chartOptions} />
               </Box>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
 
-      {/* IMPACS Assessment Features */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        {/* International Shipping Locations */}
-        <Grid item xs={12} md={6}>
-          <Card sx={{
-            borderRadius: 3,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
-            p: 3
-          }}>
-            <Box display="flex" alignItems="center" mb={2.5}>
-              <Public sx={{ color: '#1e293b', mr: 1, fontSize: 28 }} />
-              <Typography variant="h5" sx={{
-                color: '#1e293b',
-                fontWeight: '700'
-              }}>
-                Global Shipping Destinations
+      {/* World Map */}
+      <Grid container spacing={3} mb={4}>
+        <Grid item xs={12}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Customer Locations
               </Typography>
-            </Box>
-            <Box sx={{ fontSize: '0.9rem', color: '#64748b', lineHeight: '1.6' }}>
-              {stats?.top_shipping_countries?.slice(0, 8).map((country, index) => (
-                <Box key={index} sx={{ mb: 1.5, display: 'flex', justifyContent: 'space-between' }}>
-                  <span>{country.country}</span>
-                  <span style={{ fontWeight: '600' }}>{country.orders} orders</span>
-                </Box>
-              )) || (
-                <Box sx={{ textAlign: 'center', color: '#94a3b8' }}>
-                  Loading shipping data...
-                </Box>
-              )}
-              <Box sx={{ mt: 2, p: 1.5, backgroundColor: '#f0fdf4', borderRadius: 1 }}>
-                <strong style={{ color: '#15803d' }}>Worldwide Shipping</strong>
-                <br />
-                <span style={{ fontSize: '0.8rem', color: '#166534' }}>
-                  International toy distribution across {stats?.top_shipping_countries?.length || 0} countries
-                </span>
+              <Box height={500} position="relative">
+                <ComposableMap
+                  projectionConfig={{ scale: 150 }}
+                  style={{ width: '100%', height: '100%' }}
+                >
+                  <Geographies geography={geoUrl}>
+                    {({ geographies }) =>
+                      geographies.map((geo) => (
+                        <Geography
+                          key={geo.rsmKey}
+                          geography={geo}
+                          fill="#EAEAEC"
+                          stroke="#D6D6DA"
+                        />
+                      ))
+                    }
+                  </Geographies>
+                  {Array.isArray(stats?.customerLocations) && stats.customerLocations.map(({ country, count, coordinates }) => (
+                    <Marker key={country} coordinates={coordinates}>
+                      <circle
+                        cx={0}
+                        cy={0}
+                        r={Math.min(5 + Math.sqrt(count) * 2, 15)}
+                        fill="#FF6B6B"
+                        fillOpacity={0.6}
+                        stroke="#FF6B6B"
+                        strokeWidth={1}
+                      />
+                      <text
+                        textAnchor="middle"
+                        y={-10}
+                        style={{
+                          fontFamily: 'system-ui',
+                          fill: '#5D5A6D',
+                          fontSize: 10,
+                          fontWeight: 'bold',
+                        }}
+                      >
+                        {country}
+                      </text>
+                    </Marker>
+                  ))}
+                </ComposableMap>
               </Box>
-            </Box>
+            </CardContent>
           </Card>
         </Grid>
+      </Grid>
 
-        {/* Toy Types Distribution */}
-        <Grid item xs={12} md={6}>
-          <Card sx={{
-            borderRadius: 3,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
-            p: 3
-          }}>
-            <Box display="flex" alignItems="center" mb={2.5}>
-              <Toys sx={{ color: '#1e293b', mr: 1, fontSize: 28 }} />
-              <Typography variant="h5" sx={{
-                color: '#1e293b',
-                fontWeight: '700'
-              }}>
-                Toy Types Distribution (Ages 5-8)
-              </Typography>
+      {/* Customer Table */}
+      <Grid container spacing={3}>
+        <Grid item xs={12}>
+          <Card>
+            <Box p={2} display="flex" justifyContent="space-between" alignItems="center">
+              <Typography variant="h6">Customers</Typography>
+              <Box>
+                {selectedCustomers.length > 0 && (
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    startIcon={<DeleteIcon />}
+                    onClick={() => setDeleteDialogOpen(true)}
+                    sx={{ mr: 2 }}
+                  >
+                    Delete ({selectedCustomers.length})
+                  </Button>
+                )}
+                <Button
+                  variant="contained"
+                  color="primary"
+                  startIcon={<PdfIcon />}
+                  onClick={exportToPdf}
+                >
+                  Export PDF
+                </Button>
+              </Box>
             </Box>
-            <Box sx={{ fontSize: '0.9rem', color: '#64748b', lineHeight: '1.6' }}>
-              <Box display="flex" justifyContent="space-between" alignItems="center" mb={1.5}>
-                <Box display="flex" alignItems="center">
-                  <DirectionsCar sx={{ mr: 1, fontSize: 20, color: '#64748b' }} />
-                  <span>Trucks & Vehicles</span>
-                </Box>
-                <span style={{ fontWeight: '600' }}>15 orders</span>
-              </Box>
-              <Box display="flex" justifyContent="space-between" alignItems="center" mb={1.5}>
-                <Box display="flex" alignItems="center">
-                  <Extension sx={{ mr: 1, fontSize: 20, color: '#64748b' }} />
-                  <span>LEGO Sets</span>
-                </Box>
-                <span style={{ fontWeight: '600' }}>12 orders</span>
-              </Box>
-              <Box display="flex" justifyContent="space-between" alignItems="center" mb={1.5}>
-                <Box display="flex" alignItems="center">
-                  <SportsEsports sx={{ mr: 1, fontSize: 20, color: '#64748b' }} />
-                  <span>Scooters</span>
-                </Box>
-                <span style={{ fontWeight: '600' }}>8 orders</span>
-              </Box>
-              <Box display="flex" justifyContent="space-between" alignItems="center" mb={1.5}>
-                <Box display="flex" alignItems="center">
-                  <Toys sx={{ mr: 1, fontSize: 20, color: '#64748b' }} />
-                  <span>Stuffed Animals</span>
-                </Box>
-                <span style={{ fontWeight: '600' }}>10 orders</span>
-              </Box>
-              <Box sx={{ mt: 2, p: 1.5, backgroundColor: '#eff6ff', borderRadius: 1 }}>
-                <strong style={{ color: '#1d4ed8' }}>Age Group: 5-8 Years</strong>
-                <br />
-                <span style={{ fontSize: '0.8rem', color: '#1e40af' }}>
-                  Specialized toys for early childhood development
-                </span>
-              </Box>
+            <Box sx={{ height: 400, width: '100%' }}>
+              <DataGrid
+                rows={customers}
+                columns={columns}
+                pageSize={10}
+                rowsPerPageOptions={[10, 25, 50]}
+                checkboxSelection
+                onSelectionModelChange={handleSelectionChange}
+                selectionModel={selectedCustomers}
+                disableSelectionOnClick
+              />
             </Box>
           </Card>
         </Grid>
       </Grid>
-      </Container>
 
-      {/* Dashboard Detail Modal */}
-      <DashboardDetailModal
-        open={modalOpen}
-        onClose={handleCloseModal}
-        type={modalType}
-        data={stats}
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+      >
+        <DialogTitle>Delete Customers</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to delete {selectedCustomers.length} selected customer(s)?
+            This action cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+          <Button
+            onClick={handleDeleteCustomers}
+            color="error"
+            variant="contained"
+            autoFocus
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        message={snackbar.message}
+        action={
+          <IconButton
+            size="small"
+            color="inherit"
+            onClick={() => setSnackbar({ ...snackbar, open: false })}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        }
       />
-    </Box>
+    </Container>
   );
-}
+};
 
+export default DashboardPage;

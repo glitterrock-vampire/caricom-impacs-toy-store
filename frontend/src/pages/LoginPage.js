@@ -40,6 +40,7 @@ export default function LoginPage() {
     setIsLoading(true);
     try {
       await login(email, password);
+      // The login function now dispatches 'auth-change' event
       navigate('/dashboard');
     } catch (err) {
       setError('Invalid email or password. Please try again.');
