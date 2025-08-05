@@ -35,10 +35,22 @@ import {
 } from '@mui/icons-material';
 import OrderDetailModal from './OrderDetailModal';
 
-const CustomerDetailCard = ({ customer, onEdit, onDelete, onViewOrders }) => {
+const CustomerDetailCard = ({ 
+  customer = { name: '', email: '', phone: '' }, 
+  onEdit = () => {}, 
+  onDelete = () => {}, 
+  onViewOrders = () => {},
+  orders = [],
+  totalSpentProp = 0,
+  totalOrdersProp = 0,
+  avgOrderValueProp = 0,
+  lastOrderDate = null 
+}) => {
   const [open, setOpen] = useState(false);
   const [orderDetailOpen, setOrderDetailOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
+
+  const recentOrders = orders.slice(0, 5); // Show only the 5 most recent orders
 
   const handleClickOpen = () => {
     setOpen(true);
@@ -75,8 +87,8 @@ const CustomerDetailCard = ({ customer, onEdit, onDelete, onViewOrders }) => {
     }
   };
 
-  const totalSpent = mockOrders.reduce((sum, order) => sum + order.total, 0);
-  const totalOrders = mockOrders.length;
+  // const totalSpentProp = mockOrders.reduce((sum, order) => sum + order.total, 0);
+  // const totalOrdersProp = mockOrders.length;
 
   return (
     <>
@@ -112,7 +124,7 @@ const CustomerDetailCard = ({ customer, onEdit, onDelete, onViewOrders }) => {
                 {customer.name}
               </Typography>
               <Chip 
-                label={`${totalOrders} Orders`} 
+                label={`${totalOrdersProp} Orders`} 
                 size="small" 
                 color="primary" 
                 variant="outlined"
@@ -135,23 +147,33 @@ const CustomerDetailCard = ({ customer, onEdit, onDelete, onViewOrders }) => {
           </Box>
 
           <Box display="flex" justifyContent="space-between" alignItems="center">
-            <Box textAlign="center">
-              <Typography variant="h6" color="primary">
-                ${totalSpent.toFixed(2)}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Total Spent
-              </Typography>
-            </Box>
-            <Box textAlign="center">
-              <Typography variant="h6" color="secondary">
-                {totalOrders}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Orders
-              </Typography>
-            </Box>
+          <Box textAlign="center">
+            <Typography variant="h6" color="primary">
+              ${(totalSpentProp || 0).toFixed(2)}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Total Spent
+            </Typography>
           </Box>
+          <Box textAlign="center">
+            <Typography variant="h6" color="secondary">
+              {totalOrdersProp || 0}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Orders
+            </Typography>
+          </Box>
+          {lastOrderDate && (
+            <Box textAlign="center">
+              <Typography variant="subtitle2">
+                Last Order
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {new Date(lastOrderDate).toLocaleDateString()}
+              </Typography>
+            </Box>
+          )}
+        </Box>
         </CardContent>
 
         <CardActions sx={{ justifyContent: 'space-between', px: 2, pb: 2 }}>
@@ -268,7 +290,7 @@ const CustomerDetailCard = ({ customer, onEdit, onDelete, onViewOrders }) => {
             </Grid>
 
             {/* Order Statistics */}
-            <Grid item xs={12} md={6}>
+\            <Grid item xs={12} md={6}>
               <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
                 <ShoppingCart sx={{ mr: 1 }} />
                 Order Statistics
@@ -276,59 +298,91 @@ const CustomerDetailCard = ({ customer, onEdit, onDelete, onViewOrders }) => {
               <Box display="flex" flexDirection="column" gap={2}>
                 <Box display="flex" justifyContent="space-between" alignItems="center">
                   <Typography variant="body2">Total Orders:</Typography>
-                  <Chip label={totalOrders} color="primary" size="small" />
+                  <Chip label={totalOrdersProp} color="primary" size="small" />
                 </Box>
                 <Box display="flex" justifyContent="space-between" alignItems="center">
                   <Typography variant="body2">Total Spent:</Typography>
-                  <Chip label={`$${totalSpent.toFixed(2)}`} color="success" size="small" />
+                  <Chip 
+                    label={`$${totalSpentProp.toFixed(2)}`} 
+                    color="success" 
+                    size="small" 
+                  />
                 </Box>
                 <Box display="flex" justifyContent="space-between" alignItems="center">
                   <Typography variant="body2">Average Order:</Typography>
-                  <Chip label={`$${(totalSpent / totalOrders).toFixed(2)}`} color="info" size="small" />
+                  <Chip 
+                    label={`$${avgOrderValueProp.toFixed(2)}`} 
+                    color="info" 
+                    size="small" 
+                  />
                 </Box>
+                {lastOrderDate && (
+                  <Box display="flex" justifyContent="space-between" alignItems="center">
+                    <Typography variant="body2">Last Order:</Typography>
+                    <Typography variant="body2">
+                      {new Date(lastOrderDate).toLocaleDateString()}
+                    </Typography>
+                  </Box>
+                )}
               </Box>
             </Grid>
-
+            
             {/* Recent Orders */}
             <Grid item xs={12}>
               <Divider sx={{ my: 2 }} />
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
-                <Receipt sx={{ mr: 1 }} />
-                Recent Orders
-              </Typography>
-              <List>
-                {mockOrders.map((order) => (
-                  <ListItem
-                    key={order.id}
-                    divider
-                    button
-                    onClick={() => handleViewOrderDetail(order)}
-                    sx={{
-                      '&:hover': {
-                        backgroundColor: 'action.hover',
-                      }
-                    }}
+              <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center' }}>
+                  <Receipt sx={{ mr: 1 }} />
+                  Recent Orders
+                </Typography>
+                {orders.length > 5 && (
+                  <Button 
+                    size="small" 
+                    onClick={() => onViewOrders && onViewOrders(customer.id)}
                   >
-                    <ListItemIcon>
-                      <LocalShipping color="primary" />
-                    </ListItemIcon>
-                    <ListItemText
-                      primary={`Order #${order.id}`}
-                      secondary={`${order.date} • ${order.items} items`}
-                    />
-                    <Box display="flex" alignItems="center" gap={1}>
-                      <Typography variant="body2" fontWeight="bold">
-                        ${order.total}
-                      </Typography>
-                      <Chip
-                        label={order.status}
-                        color={getStatusColor(order.status)}
-                        size="small"
-                        variant="outlined"
+                    View All ({orders.length})
+                  </Button>
+                )}
+              </Box>
+              <List>
+                {recentOrders.length > 0 ? (
+                  recentOrders.map((order) => (
+                    <ListItem
+                      key={order.id}
+                      divider
+                      button
+                      onClick={() => handleViewOrderDetail(order)}
+                      sx={{
+                        '&:hover': {
+                          backgroundColor: 'action.hover',
+                        }
+                      }}
+                    >
+                      <ListItemIcon>
+                        <LocalShipping color="primary" />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={`Order #${order.id}`}
+                        secondary={new Date(order.order_date || order.date).toLocaleDateString()}
                       />
-                    </Box>
-                  </ListItem>
-                ))}
+                      <Box display="flex" alignItems="center" gap={1}>
+                        <Typography variant="body2" fontWeight="bold">
+                          ${(order?.total_amount || order?.total || 0).toFixed(2)}
+                        </Typography>
+                        <Chip
+                          label={order.status}
+                          color={getStatusColor(order.status)}
+                          size="small"
+                          variant="outlined"
+                        />
+                      </Box>
+                    </ListItem>
+                  ))
+                ) : (
+                  <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
+                    No orders found
+                  </Typography>
+                )}
               </List>
             </Grid>
           </Grid>

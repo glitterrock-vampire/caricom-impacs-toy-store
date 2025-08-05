@@ -6,10 +6,9 @@ import { muiTheme } from './theme/muiTheme';
 import Navbar from './components/Navbar';
 import DashboardPage from './pages/DashboardPage';
 import InventoryPage from './pages/InventoryPage';
-import CustomersPage from './pages/CustomersPage';
 import OrdersPage from './pages/OrdersPage';
 import AccountManagementPage from './pages/AccountManagementPage';
-
+import CustomerManagementPage from './pages/CustomerManagementPage';
 import LoginPage from './pages/LoginPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import { isAuthenticated } from './services/authService';
@@ -65,7 +64,7 @@ function App() {
               path="/customers" 
               element={
                 <ProtectedRoute>
-                  <CustomersPage />
+                  <CustomerManagementPage />
                 </ProtectedRoute>
               } 
             />
