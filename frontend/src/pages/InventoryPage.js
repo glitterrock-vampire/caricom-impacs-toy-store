@@ -414,37 +414,53 @@ export default function InventoryPage() {
                   <TableRow key={product.id}>
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                      {product.imageUrl ? (
-                        <Box
-                          component="img"
-                          src={product.imageUrl.startsWith('http') ? product.imageUrl : `${process.env.REACT_APP_API_URL || 'http://localhost:8000'}${product.imageUrl}`}
-                          alt={product.name}
-                          onError={(e) => {
-                            e.target.onerror = null; // Prevent infinite loop
-                            e.target.src = '/no-image-placeholder.png';
-                          }}
-                          sx={{ 
-                            width: 40, 
-                            height: 40, 
-                            objectFit: 'cover', 
-                            borderRadius: 1 
-                          }}
-                        />
-                      ) : (
+                      <Box 
+                        sx={{ 
+                          width: 40, 
+                          height: 40, 
+                          bgcolor: 'grey.100',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          borderRadius: 1,
+                          overflow: 'hidden',
+                          position: 'relative'
+                        }}
+                      >
+                        {product.imageUrl && !product.imageUrl.includes('loremflickr') ? (
+                          <Box
+                            component="img"
+                            src={product.imageUrl.startsWith('http') ? product.imageUrl : `${process.env.REACT_APP_API_URL || 'http://localhost:8000'}${product.imageUrl}`}
+                            alt={product.name}
+                            onError={(e) => {
+                              e.target.style.display = 'none';
+                            }}
+                            sx={{ 
+                              width: '100%',
+                              height: '100%',
+                              objectFit: 'cover',
+                              display: 'block'
+                            }}
+                          />
+                        ) : null}
                         <Box 
                           sx={{ 
-                            width: 40, 
-                            height: 40, 
-                            bgcolor: 'grey.200',
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            borderRadius: 1
+                            backgroundColor: 'rgba(0,0,0,0.05)'
                           }}
                         >
-                          <Typography variant="caption" color="textSecondary">No Image</Typography>
+                          <Typography variant="caption" color="textSecondary" sx={{ fontSize: '0.5rem', textAlign: 'center', px: 0.5 }}>
+                            No Image
+                          </Typography>
                         </Box>
-                      )}
+                      </Box>
                         <Box>
                           <Typography variant="body1">{product.name}</Typography>
                           <Typography variant="caption" color="textSecondary">
@@ -534,32 +550,51 @@ export default function InventoryPage() {
                   mb: 2
                 }}
               >
-                {formData.imagePreview || formData.imageUrl ? (
-                  <Box sx={{ position: 'relative', mb: 2 }}>
-                    <Avatar 
-                      src={formData.imagePreview || 
-                           (formData.imageUrl.startsWith('http') ? 
-                             formData.imageUrl : 
-                             `${process.env.REACT_APP_API_URL || 'http://localhost:8000'}${formData.imageUrl}`)} 
-                      alt="Preview" 
-                      sx={{ 
-                        width: 150, 
-                        height: 150,
-                        borderRadius: 1,
-                        objectFit: 'cover'
-                      }}
-                      variant="rounded"
-                      onError={(e) => {
-                        e.target.onerror = null;
-                        e.target.src = '/no-image-placeholder.png';
-                      }}
-                    />
+                <Box sx={{ position: 'relative', mb: 2 }}>
+                  <Box
+                    sx={{
+                      width: 150,
+                      height: 150,
+                      borderRadius: 1,
+                      overflow: 'hidden',
+                      position: 'relative',
+                      backgroundColor: 'grey.100',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      mb: 2
+                    }}
+                  >
+                    {(formData.imagePreview || (formData.imageUrl && !formData.imageUrl.includes('loremflickr'))) ? (
+                      <Box
+                        component="img"
+                        src={formData.imagePreview || 
+                             (formData.imageUrl.startsWith('http') ? 
+                               formData.imageUrl : 
+                               `${process.env.REACT_APP_API_URL || 'http://localhost:8000'}${formData.imageUrl}`)}
+                        alt="Preview"
+                        onError={(e) => {
+                          e.target.style.display = 'none';
+                        }}
+                        sx={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                          position: 'absolute',
+                          top: 0,
+                          left: 0
+                        }}
+                      />
+                    ) : null}
+                    <Typography variant="body2" color="textSecondary">
+                      No Image
+                    </Typography>
                     <IconButton
                       onClick={handleRemoveImage}
                       sx={{
                         position: 'absolute',
-                        top: -10,
-                        right: -10,
+                        top: 0,
+                        right: 0,
                         backgroundColor: 'background.paper',
                         '&:hover': {
                           backgroundColor: 'action.hover'
@@ -569,18 +604,7 @@ export default function InventoryPage() {
                       <CancelIcon color="error" />
                     </IconButton>
                   </Box>
-                ) : (
-                  <Avatar 
-                    sx={{ 
-                      width: 100, 
-                      height: 100,
-                      mb: 1,
-                      backgroundColor: 'action.hover'
-                    }}
-                  >
-                    <CloudUpload fontSize="large" color="action" />
-                  </Avatar>
-                )}
+                </Box>
                 <Button
                   variant="outlined"
                   component="label"

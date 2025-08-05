@@ -184,8 +184,10 @@ const inventoryService = {
 
   async updateStock(id, stock) {
     try {
-      const response = await api.patch(`${API_PREFIX}/products/${id}/stock`, { 
-        stock: parseInt(stock, 10) 
+      const response = await api.put(`${API_PREFIX}/products/${id}`, { 
+        stock: parseInt(stock, 10),
+        // Let the backend handle the status update based on stock
+        status: undefined // This will make the backend recalculate the status
       });
       return response.data;
     } catch (error) {
