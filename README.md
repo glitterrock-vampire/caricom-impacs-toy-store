@@ -72,7 +72,7 @@ A comprehensive full-stack web application for managing toy store operations wit
 ### Installation
 ```bash
 # Clone repository
-git clone https://github.com/your-repo/toy-store-management.git
+git clone https://github.com/glitterrock-vampire/caricom-impacs-toy-store.git
 cd toy-store-management
 
 # Install dependencies
