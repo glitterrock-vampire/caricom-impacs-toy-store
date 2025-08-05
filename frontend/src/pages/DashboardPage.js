@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Alert,
   Box,
   Button,
   Card,
   CardContent,
+  CardHeader,
+  Chip,
   CircularProgress,
   Container,
   Dialog,
@@ -12,12 +14,16 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
+  Divider,
   Grid,
   IconButton,
   Snackbar,
   ToggleButton,
   ToggleButtonGroup,
-  Typography
+  Tooltip,
+  Typography,
+  useTheme,
+  Paper
 } from '@mui/material';
 import {
   Assessment as DashboardIcon,
@@ -26,16 +32,23 @@ import {
   PictureAsPdf as PdfIcon,
   Close as CloseIcon,
   ShoppingCart as ShoppingCartIcon,
-  Category as CategoryIcon
+  Category as CategoryIcon,
+  People as PeopleIcon,
+  LocationOn as LocationIcon,
+  Visibility as VisibilityIcon,
+  TrendingUp as TrendingUpIcon,
+  Info as InfoIcon
 } from '@mui/icons-material';
-import { DataGrid } from '@mui/x-data-grid';
-import { Bar, Pie } from 'react-chartjs-2';
+import { DataGrid, GridToolbar } from '@mui/x-data-grid';
+import { Bar, Pie, Line } from 'react-chartjs-2';
 import { ComposableMap, Geographies, Geography, Marker } from 'react-simple-maps';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
+import { format, subDays, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
+import { faker } from '@faker-js/faker';
 import api from '../services/api';
 
-// Chart.js setup
+// Chart.js setup with all required components
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -44,9 +57,13 @@ import {
   Title,
   Tooltip as ChartTooltip,
   Legend,
-  ArcElement
+  ArcElement,
+  PointElement,
+  LineElement,
+  Filler
 } from 'chart.js';
 
+// Register ChartJS components
 ChartJS.register(
   CategoryScale,
   LinearScale,
@@ -54,7 +71,10 @@ ChartJS.register(
   Title,
   ChartTooltip,
   Legend,
-  ArcElement
+  ArcElement,
+  PointElement,
+  LineElement,
+  Filler
 );
 
 // World map URL

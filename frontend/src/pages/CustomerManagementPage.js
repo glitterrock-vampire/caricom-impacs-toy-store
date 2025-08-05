@@ -845,17 +845,18 @@ const formatAddress = (address) => {
               </Typography>
               {customers.map(customer => (
               <Grid item xs={12} sm={6} md={4} key={customer.id}>
-            <CustomerDetailCard
-              customer={customer}
-              orders={customer.orders || []}
-              totalSpentProp={customer.totalSpent || 0}
-              totalOrdersProp={customer.totalOrders || 0}
-              avgOrderValueProp={customer.avgOrderValue || 0}
-              lastOrderDate={customer.lastOrder}
-              onEdit={handleEditCustomer}
-              onDelete={handleDeleteCustomer}
-              onViewOrders={handleViewCustomerOrders}
-            />
+                <CustomerDetailCard
+                  customer={customer}
+                  orders={customer.orders || []}
+                  // Optional: You can pass these or let the component calculate them
+                  totalSpent={customer.totalSpent}
+                  totalOrders={customer.totalOrders}
+                  avgOrderValue={customer.avgOrderValue}
+                  lastOrderDate={customer.lastOrderDate}
+                  onEdit={handleEditCustomer}
+                  onDelete={handleDeleteCustomer}
+                  onViewOrders={handleViewCustomerOrders}
+                />
             </Grid>
             ))}
             </CardContent>

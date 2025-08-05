@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { debounce } from 'lodash';
 import {
   Container,
   Typography,
@@ -39,9 +40,31 @@ export default function OrdersPage() {
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [orderDetails, setOrderDetails] = useState(null);
+  const [error, setError] = useState('');
 
-  const orderStatuses = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
+  const orderStatuses = [
+    { value: 'pending', label: 'Pending' },
+    { value: 'processing', label: 'Processing' },
+    { value: 'shipped', label: 'Shipped' },
+    { value: 'delivered', label: 'Delivered' },
+    { value: 'cancelled', label: 'Cancelled' }
+  ];
 
+  // Create a debounced version of setSearchTerm
+  const debouncedSetSearchTerm = React.useCallback(
+    debounce((value) => {
+      setSearchTerm(value);
+      setPage(0);
+    }, 500),
+    []
+  );
+
+  // Cleanup debounce on component unmount
+  React.useEffect(() => {
+    return () => {
+      debouncedSetSearchTerm.cancel();
+    };
+  }, [debouncedSetSearchTerm]);
   useEffect(() => {
     fetchOrders();
   }, [page, rowsPerPage, searchTerm, statusFilter]);
@@ -49,18 +72,43 @@ export default function OrdersPage() {
   const fetchOrders = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/api/orders', {
-        params: {
-          page: page + 1,
-          limit: rowsPerPage,
-          search: searchTerm,
-          status: statusFilter
-        }
-      });
-      setOrders(response.data.orders || response.data.data || []);
-      setTotalCount(response.data.total || response.data.count || 0);
+      setError(''); // Clear any previous errors
+      
+      // Prepare query parameters
+      const params = {
+        page: page + 1,
+        limit: rowsPerPage,
+      };
+  
+      // Add search filter if provided
+      if (searchTerm) {
+        params.search = searchTerm;
+      }
+  
+      // Add status filter if provided
+      if (statusFilter) {
+        params.status = statusFilter;
+      }
+  
+      console.log('Fetching orders with params:', params);
+      
+      const response = await api.get('/api/orders', { params });
+      
+      // Handle the response structure
+      // The backend should return { orders: [], pagination: { total, page, limit, pages } }
+      const ordersData = Array.isArray(response.data.orders) ? response.data.orders : [];
+      const total = response.data.pagination?.total || ordersData.length;
+      
+      console.log('Fetched orders:', ordersData);
+      console.log('Pagination info:', response.data.pagination);
+      
+      setOrders(ordersData);
+      setTotalCount(total);
     } catch (error) {
       console.error('Error fetching orders:', error);
+      setError('Failed to load orders. Please try again later.');
+      setOrders([]);
+      setTotalCount(0);
     } finally {
       setLoading(false);
     }
@@ -85,13 +133,16 @@ export default function OrdersPage() {
   };
 
   const handleSearch = (event) => {
-    setSearchTerm(event.target.value);
-    setPage(0);
+    const value = event.target.value;
+    // Update the input field immediately for better UX
+    setSearchTerm(value);
+    // Use the debounced function to update the search term after a delay
+    debouncedSetSearchTerm(value);
   };
 
   const handleStatusFilter = (event) => {
     setStatusFilter(event.target.value);
-    setPage(0);
+    setPage(0); // Reset to first page when changing status
   };
 
   const handleViewOrder = async (order) => {
@@ -111,12 +162,18 @@ export default function OrdersPage() {
 
   const getStatusColor = (status) => {
     switch (status?.toLowerCase()) {
-      case 'pending': return 'warning';
-      case 'processing': return 'info';
-      case 'shipped': return 'primary';
-      case 'delivered': return 'success';
-      case 'cancelled': return 'error';
-      default: return 'default';
+      case 'pending':
+        return 'warning';
+      case 'processing':
+        return 'info';
+      case 'shipped':
+        return 'primary';
+      case 'delivered':
+        return 'success';
+      case 'cancelled':
+        return 'error';
+      default:
+        return 'default';
     }
   };
 
@@ -134,24 +191,81 @@ export default function OrdersPage() {
 
       <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
         <TextField
+          fullWidth
           label="Search orders..."
           value={searchTerm}
           onChange={handleSearch}
           variant="outlined"
           sx={{ flex: 1 }}
           placeholder="Search by order ID, customer name, or email"
+          InputProps={{
+            endAdornment: searchTerm && (
+              <IconButton
+                size="small"
+                onClick={() => {
+                  setSearchTerm('');
+                  setPage(0);
+                }}
+                edge="end"
+              >
+                ✕
+              </IconButton>
+            ),
+          }}
         />
-        <FormControl sx={{ minWidth: 200 }}>
+        <FormControl sx={{ minWidth: 200, ml: 2 }}>
           <InputLabel>Status</InputLabel>
           <Select
             value={statusFilter}
             label="Status"
             onChange={handleStatusFilter}
+            sx={{
+              '& .MuiSelect-select': {
+                display: 'flex',
+                alignItems: 'center',
+              },
+            }}
+            endAdornment={
+              statusFilter && (
+                <IconButton
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setStatusFilter('');
+                    setPage(0);
+                  }}
+                  sx={{ mr: 1 }}
+                >
+                  ✕
+                </IconButton>
+              )
+            }
           >
-            <MenuItem value="">All Statuses</MenuItem>
+            <MenuItem value="">
+              <em>All Statuses</em>
+            </MenuItem>
             {orderStatuses.map((status) => (
-              <MenuItem key={status} value={status}>
-                {status.charAt(0).toUpperCase() + status.slice(1)}
+              <MenuItem key={status.value} value={status.value}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Box
+                    sx={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: '50%',
+                      bgcolor: (theme) => {
+                        const colorMap = {
+                          pending: theme.palette.warning.main,
+                          processing: theme.palette.info.main,
+                          shipped: theme.palette.primary.main,
+                          delivered: theme.palette.success.main,
+                          cancelled: theme.palette.error.main,
+                        };
+                        return colorMap[status.value] || theme.palette.grey[500];
+                      },
+                    }}
+                  />
+                  {status.label}
+                </Box>
               </MenuItem>
             ))}
           </Select>
@@ -173,57 +287,65 @@ export default function OrdersPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {loading ? (
-                <TableRow>
-                  <TableCell colSpan={7} align="center">
-                    <CircularProgress />
-                  </TableCell>
-                </TableRow>
-              ) : orders.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} align="center">
-                    No orders found
-                  </TableCell>
-                </TableRow>
-              ) : (
-                orders.map((order) => (
-                  <TableRow key={order.id} hover>
-                    <TableCell>#{order.id}</TableCell>
-                    <TableCell>
-                      {order.customer?.name || order.customerName || 'N/A'}
-                      <br />
-                      <Typography variant="caption" color="textSecondary">
-                        {order.customer?.email || order.customerEmail || ''}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>{formatDate(order.orderDate || order.createdAt)}</TableCell>
-                    <TableCell>${(order.totalAmount || order.total || 0).toFixed(2)}</TableCell>
-                    <TableCell>
-                      <Chip
-                        label={order.status?.charAt(0).toUpperCase() + order.status?.slice(1)}
-                        color={getStatusColor(order.status)}
-                        size="small"
-                      />
-                    </TableCell>
-                    <TableCell>{order.itemCount || order.items?.length || 0}</TableCell>
-                    <TableCell>
-                      <IconButton onClick={() => handleViewOrder(order)} size="small">
-                        <Visibility />
-                      </IconButton>
-                      {order.status === 'processing' && (
-                        <IconButton 
-                          onClick={() => handleUpdateStatus(order.id, 'shipped')} 
-                          size="small"
-                          title="Mark as Shipped"
-                        >
-                          <LocalShipping />
-                        </IconButton>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
+  {loading ? (
+    <TableRow>
+      <TableCell colSpan={7} align="center">
+        <CircularProgress />
+      </TableCell>
+    </TableRow>
+  ) : orders.length === 0 ? (
+    <TableRow>
+      <TableCell colSpan={7} align="center">
+        {error || 'No orders found'}
+      </TableCell>
+    </TableRow>
+  ) : (
+    orders.map((order) => (
+      <TableRow key={order.id} hover>
+        <TableCell>#{order.orderNumber || order.id}</TableCell>
+        <TableCell>
+          {order.customer?.name || 'N/A'}
+          <br />
+          <Typography variant="caption" color="textSecondary">
+            {order.customer?.email || ''}
+          </Typography>
+        </TableCell>
+        <TableCell>
+          {order.orderDate ? new Date(order.orderDate).toLocaleDateString() : 'N/A'}
+        </TableCell>
+        <TableCell>${order.totalAmount?.toFixed(2) || '0.00'}</TableCell>
+        <TableCell>
+          <Chip
+            label={order.status?.charAt(0).toUpperCase() + order.status?.slice(1) || 'N/A'}
+            color={getStatusColor(order.status)}
+            size="small"
+          />
+        </TableCell>
+        <TableCell>
+          {Array.isArray(order.items) ? order.items.length : 0}
+        </TableCell>
+        <TableCell>
+          <IconButton 
+            onClick={() => handleViewOrder(order)} 
+            size="small"
+            title="View Order Details"
+          >
+            <Visibility />
+          </IconButton>
+          {order.status === 'processing' && (
+            <IconButton 
+              onClick={() => handleUpdateStatus(order.id, 'shipped')} 
+              size="small"
+              title="Mark as Shipped"
+            >
+              <LocalShipping />
+            </IconButton>
+          )}
+        </TableCell>
+      </TableRow>
+    ))
+  )}
+</TableBody>
           </Table>
         </TableContainer>
         <TablePagination

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Card,
   CardContent,
@@ -33,6 +33,7 @@ import {
   LocalShipping,
   Receipt,
 } from '@mui/icons-material';
+import PropTypes from 'prop-types';
 import OrderDetailModal from './OrderDetailModal';
 
 const CustomerDetailCard = ({ 
@@ -41,24 +42,60 @@ const CustomerDetailCard = ({
   onDelete = () => {}, 
   onViewOrders = () => {},
   orders = [],
-  totalSpentProp = 0,
-  totalOrdersProp = 0,
-  avgOrderValueProp = 0,
-  lastOrderDate = null 
+  totalSpent: propTotalSpent,
+  totalOrders: propTotalOrders,
+  avgOrderValue: propAvgOrderValue,
+  lastOrderDate: propLastOrderDate
 }) => {
   const [open, setOpen] = useState(false);
   const [orderDetailOpen, setOrderDetailOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
 
-  const recentOrders = orders.slice(0, 5); // Show only the 5 most recent orders
+  // Calculate derived values
+  const { totalSpent, totalOrders, avgOrderValue, lastOrderDate } = useMemo(() => {
+    // Calculate from orders if not provided
+    const calculatedTotalOrders = propTotalOrders >= 0 ? propTotalOrders : orders.length;
+    
+    const calculatedTotalSpent = propTotalSpent >= 0 
+      ? propTotalSpent 
+      : orders.reduce((sum, order) => sum + parseFloat(order.totalAmount || order.total || 0), 0);
+    
+    const calculatedAvgOrder = propAvgOrderValue >= 0
+      ? propAvgOrderValue
+      : (calculatedTotalOrders > 0 ? calculatedTotalSpent / calculatedTotalOrders : 0);
+    
+    // Find the most recent order date
+    let calculatedLastOrder = propLastOrderDate;
+    if (!calculatedLastOrder && orders.length > 0) {
+      const sortedOrders = [...orders].sort((a, b) => {
+        const dateA = new Date(a.orderDate || a.date || 0);
+        const dateB = new Date(b.orderDate || b.date || 0);
+        return dateB - dateA;
+      });
+      calculatedLastOrder = sortedOrders[0]?.orderDate || sortedOrders[0]?.date;
+    }
 
-  const handleClickOpen = () => {
-    setOpen(true);
-  };
+    return {
+      totalSpent: calculatedTotalSpent,
+      totalOrders: calculatedTotalOrders,
+      avgOrderValue: calculatedAvgOrder,
+      lastOrderDate: calculatedLastOrder
+    };
+  }, [orders, propTotalSpent, propTotalOrders, propAvgOrderValue, propLastOrderDate]);
 
-  const handleClose = () => {
-    setOpen(false);
-  };
+  const recentOrders = useMemo(() => 
+    [...orders]
+      .sort((a, b) => {
+        const dateA = new Date(a.orderDate || a.date || 0);
+        const dateB = new Date(b.orderDate || b.date || 0);
+        return dateB - dateA;
+      })
+      .slice(0, 5),
+    [orders]
+  );
+
+  const handleClickOpen = () => setOpen(true);
+  const handleClose = () => setOpen(false);
 
   const handleViewOrderDetail = (order) => {
     setSelectedOrder(order);
@@ -70,28 +107,39 @@ const CustomerDetailCard = ({
     setSelectedOrder(null);
   };
 
-  // Mock order data - in real app this would come from props or API
-  const mockOrders = [
-    { id: 1, date: '2024-01-15', total: 125.50, status: 'delivered', items: 3 },
-    { id: 2, date: '2024-01-20', total: 89.99, status: 'shipped', items: 2 },
-    { id: 3, date: '2024-01-25', total: 156.75, status: 'pending', items: 4 },
-  ];
-
   const getStatusColor = (status) => {
-    switch (status) {
+    if (!status) return 'default';
+    const statusLower = status.toLowerCase();
+    switch (statusLower) {
       case 'delivered': return 'success';
       case 'shipped': return 'info';
+      case 'processing':
       case 'pending': return 'warning';
-      case 'cancelled': return 'error';
+      case 'cancelled': 
+      case 'declined': return 'error';
       default: return 'default';
     }
   };
 
-  // const totalSpentProp = mockOrders.reduce((sum, order) => sum + order.total, 0);
-  // const totalOrdersProp = mockOrders.length;
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    try {
+      const date = new Date(dateString);
+      return isNaN(date.getTime()) ? 'N/A' : date.toLocaleDateString();
+    } catch (e) {
+      return 'N/A';
+    }
+  };
+
+  const formatCurrency = (amount) => {
+    if (amount === null || amount === undefined) return '$0.00';
+    const num = parseFloat(amount);
+    return isNaN(num) ? '$0.00' : `$${num.toFixed(2)}`;
+  };
 
   return (
     <>
+      {/* Card Content - Same as before but with the new calculated values */}
       <Card 
         sx={{ 
           height: '100%', 
@@ -117,14 +165,14 @@ const CustomerDetailCard = ({
                 fontSize: '1.5rem'
               }}
             >
-              {customer.name.charAt(0)}
+              {customer.name?.charAt(0) || '?'}
             </Avatar>
             <Box>
               <Typography variant="h6" component="h2" gutterBottom>
-                {customer.name}
+                {customer.name || 'Unknown Customer'}
               </Typography>
               <Chip 
-                label={`${totalOrdersProp} Orders`} 
+                label={`${totalOrders} Order${totalOrders !== 1 ? 's' : ''}`} 
                 size="small" 
                 color="primary" 
                 variant="outlined"
@@ -134,46 +182,44 @@ const CustomerDetailCard = ({
 
           <Box display="flex" alignItems="center" mb={1}>
             <Email sx={{ color: 'text.secondary', mr: 1, fontSize: 20 }} />
-            <Typography variant="body2" color="text.secondary">
-              {customer.email}
+            <Typography variant="body2" color="text.secondary" noWrap>
+              {customer.email || 'No email provided'}
             </Typography>
           </Box>
 
           <Box display="flex" alignItems="center" mb={2}>
             <Phone sx={{ color: 'text.secondary', mr: 1, fontSize: 20 }} />
             <Typography variant="body2" color="text.secondary">
-              {customer.phone}
+              {customer.phone || 'No phone provided'}
             </Typography>
           </Box>
 
           <Box display="flex" justifyContent="space-between" alignItems="center">
-          <Box textAlign="center">
-            <Typography variant="h6" color="primary">
-              ${(totalSpentProp || 0).toFixed(2)}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              Total Spent
-            </Typography>
-          </Box>
-          <Box textAlign="center">
-            <Typography variant="h6" color="secondary">
-              {totalOrdersProp || 0}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              Orders
-            </Typography>
-          </Box>
-          {lastOrderDate && (
             <Box textAlign="center">
-              <Typography variant="subtitle2">
-                Last Order
+              <Typography variant="h6" color="primary">
+                {formatCurrency(totalSpent)}
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                {new Date(lastOrderDate).toLocaleDateString()}
+                Total Spent
               </Typography>
             </Box>
-          )}
-        </Box>
+            <Box textAlign="center">
+              <Typography variant="h6" color="secondary">
+                {totalOrders}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Orders
+              </Typography>
+            </Box>
+            <Box textAlign="center" minWidth={80}>
+              <Typography variant="subtitle2" noWrap>
+                Last Order
+              </Typography>
+              <Typography variant="caption" color="text.secondary" noWrap>
+                {formatDate(lastOrderDate)}
+              </Typography>
+            </Box>
+          </Box>
         </CardContent>
 
         <CardActions sx={{ justifyContent: 'space-between', px: 2, pb: 2 }}>
@@ -194,7 +240,7 @@ const CustomerDetailCard = ({
                 color="primary"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onEdit && onEdit(customer);
+                  onEdit(customer);
                 }}
               >
                 <Edit />
@@ -206,7 +252,7 @@ const CustomerDetailCard = ({
                 color="error"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onDelete && onDelete(customer.id);
+                  onDelete(customer.id);
                 }}
               >
                 <Delete />
@@ -222,9 +268,7 @@ const CustomerDetailCard = ({
         onClose={handleClose} 
         maxWidth="md" 
         fullWidth
-        PaperProps={{
-          sx: { borderRadius: 3 }
-        }}
+        PaperProps={{ sx: { borderRadius: 3 } }}
       >
         <DialogTitle sx={{ pb: 1 }}>
           <Box display="flex" alignItems="center">
@@ -237,14 +281,14 @@ const CustomerDetailCard = ({
                 fontSize: '1.75rem'
               }}
             >
-              {customer.name.charAt(0)}
+              {customer.name?.charAt(0) || '?'}
             </Avatar>
             <Box>
               <Typography variant="h5" component="h2">
-                {customer.name}
+                {customer.name || 'Unknown Customer'}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Customer ID: #{customer.id}
+                Customer ID: {customer.id ? `#${customer.id}` : 'N/A'}
               </Typography>
             </Box>
           </Box>
@@ -265,7 +309,8 @@ const CustomerDetailCard = ({
                   </ListItemIcon>
                   <ListItemText 
                     primary="Email" 
-                    secondary={customer.email}
+                    secondary={customer.email || 'N/A'}
+                    secondaryTypographyProps={{ noWrap: true }}
                   />
                 </ListItem>
                 <ListItem>
@@ -274,7 +319,7 @@ const CustomerDetailCard = ({
                   </ListItemIcon>
                   <ListItemText 
                     primary="Phone" 
-                    secondary={customer.phone}
+                    secondary={customer.phone || 'N/A'}
                   />
                 </ListItem>
                 <ListItem>
@@ -283,14 +328,14 @@ const CustomerDetailCard = ({
                   </ListItemIcon>
                   <ListItemText 
                     primary="Member Since" 
-                    secondary="January 2024"
+                    secondary={customer.createdAt ? formatDate(customer.createdAt) : 'N/A'}
                   />
                 </ListItem>
               </List>
             </Grid>
 
             {/* Order Statistics */}
-\            <Grid item xs={12} md={6}>
+            <Grid item xs={12} md={6}>
               <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
                 <ShoppingCart sx={{ mr: 1 }} />
                 Order Statistics
@@ -298,12 +343,16 @@ const CustomerDetailCard = ({
               <Box display="flex" flexDirection="column" gap={2}>
                 <Box display="flex" justifyContent="space-between" alignItems="center">
                   <Typography variant="body2">Total Orders:</Typography>
-                  <Chip label={totalOrdersProp} color="primary" size="small" />
+                  <Chip 
+                    label={totalOrders} 
+                    color="primary" 
+                    size="small" 
+                  />
                 </Box>
                 <Box display="flex" justifyContent="space-between" alignItems="center">
                   <Typography variant="body2">Total Spent:</Typography>
                   <Chip 
-                    label={`$${totalSpentProp.toFixed(2)}`} 
+                    label={formatCurrency(totalSpent)} 
                     color="success" 
                     size="small" 
                   />
@@ -311,19 +360,17 @@ const CustomerDetailCard = ({
                 <Box display="flex" justifyContent="space-between" alignItems="center">
                   <Typography variant="body2">Average Order:</Typography>
                   <Chip 
-                    label={`$${avgOrderValueProp.toFixed(2)}`} 
+                    label={formatCurrency(avgOrderValue)} 
                     color="info" 
                     size="small" 
                   />
                 </Box>
-                {lastOrderDate && (
-                  <Box display="flex" justifyContent="space-between" alignItems="center">
-                    <Typography variant="body2">Last Order:</Typography>
-                    <Typography variant="body2">
-                      {new Date(lastOrderDate).toLocaleDateString()}
-                    </Typography>
-                  </Box>
-                )}
+                <Box display="flex" justifyContent="space-between" alignItems="center">
+                  <Typography variant="body2">Last Order:</Typography>
+                  <Typography variant="body2">
+                    {formatDate(lastOrderDate)}
+                  </Typography>
+                </Box>
               </Box>
             </Grid>
             
@@ -338,7 +385,10 @@ const CustomerDetailCard = ({
                 {orders.length > 5 && (
                   <Button 
                     size="small" 
-                    onClick={() => onViewOrders && onViewOrders(customer.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onViewOrders(customer.id);
+                    }}
                   >
                     View All ({orders.length})
                   </Button>
@@ -362,15 +412,15 @@ const CustomerDetailCard = ({
                         <LocalShipping color="primary" />
                       </ListItemIcon>
                       <ListItemText
-                        primary={`Order #${order.id}`}
-                        secondary={new Date(order.order_date || order.date).toLocaleDateString()}
+                        primary={`Order #${order.orderNumber || order.id || 'N/A'}`}
+                        secondary={formatDate(order.orderDate || order.date)}
                       />
                       <Box display="flex" alignItems="center" gap={1}>
                         <Typography variant="body2" fontWeight="bold">
-                          ${(order?.total_amount || order?.total || 0).toFixed(2)}
+                          {formatCurrency(order.totalAmount || order.total)}
                         </Typography>
                         <Chip
-                          label={order.status}
+                          label={order.status || 'unknown'}
                           color={getStatusColor(order.status)}
                           size="small"
                           variant="outlined"
@@ -397,7 +447,7 @@ const CustomerDetailCard = ({
             startIcon={<Edit />}
             onClick={() => {
               handleClose();
-              onEdit && onEdit(customer);
+              onEdit(customer);
             }}
           >
             Edit Customer
@@ -407,8 +457,9 @@ const CustomerDetailCard = ({
             startIcon={<ShoppingCart />}
             onClick={() => {
               handleClose();
-              onViewOrders && onViewOrders(customer.id);
+              onViewOrders(customer.id);
             }}
+            disabled={!orders.length}
           >
             View All Orders
           </Button>
@@ -424,6 +475,46 @@ const CustomerDetailCard = ({
       />
     </>
   );
+};
+
+CustomerDetailCard.propTypes = {
+  customer: PropTypes.shape({
+    id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+    name: PropTypes.string,
+    email: PropTypes.string,
+    phone: PropTypes.string,
+    createdAt: PropTypes.oneOfType([PropTypes.string, PropTypes.instanceOf(Date)]),
+  }).isRequired,
+  orders: PropTypes.arrayOf(PropTypes.shape({
+    id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+    orderNumber: PropTypes.string,
+    orderDate: PropTypes.oneOfType([PropTypes.string, PropTypes.instanceOf(Date)]),
+    date: PropTypes.oneOfType([PropTypes.string, PropTypes.instanceOf(Date)]),
+    totalAmount: PropTypes.number,
+    total: PropTypes.number,
+    status: PropTypes.string,
+  })),
+  totalSpent: PropTypes.number,
+  totalOrders: PropTypes.number,
+  avgOrderValue: PropTypes.number,
+  lastOrderDate: PropTypes.oneOfType([
+    PropTypes.string,
+    PropTypes.instanceOf(Date)
+  ]),
+  onEdit: PropTypes.func,
+  onDelete: PropTypes.func,
+  onViewOrders: PropTypes.func,
+};
+
+CustomerDetailCard.defaultProps = {
+  orders: [],
+  totalSpent: -1, // Use -1 to indicate it should be calculated
+  totalOrders: -1, // Use -1 to indicate it should be calculated
+  avgOrderValue: -1, // Use -1 to indicate it should be calculated
+  lastOrderDate: null,
+  onEdit: () => {},
+  onDelete: () => {},
+  onViewOrders: () => {},
 };
 
 export default CustomerDetailCard;
