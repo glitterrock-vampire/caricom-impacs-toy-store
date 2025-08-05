@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Container,
   Typography,
@@ -25,9 +25,10 @@ import {
   Select,
   MenuItem,
   Alert,
-  Snackbar
+  Snackbar,
+  Avatar
 } from '@mui/material';
-import { Edit, Delete, Add, Save, Cancel, Close as CloseIcon } from '@mui/icons-material';
+import { Edit, Delete, Add, Save, Cancel, Close as CloseIcon, CloudUpload, Cancel as CancelIcon } from '@mui/icons-material';
 import inventoryService from '../services/inventoryService';
 
 export default function InventoryPage() {
@@ -50,12 +51,16 @@ export default function InventoryPage() {
     price: '',
     stock: 0,
     category: '',
-    gender: 'unisex',  // Default to unisex
-    ageRange: '',      // Add age range
+    gender: 'unisex',  
+    ageRange: '',      
     sku: '',
     imageUrl: '',
+    imageFile: null,
+    imagePreview: null,
     status: 'in_stock'
   });
+
+  const fileInputRef = useRef(null);
 
   const fetchProducts = useCallback(async () => {
     try {
@@ -146,6 +151,49 @@ export default function InventoryPage() {
     setPage(0);
   };
 
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Check file type
+      if (!file.type.match('image.*')) {
+        showSnackbar('Please select an image file (JPEG, PNG, GIF, etc.)', 'error');
+        return;
+      }
+      
+      // Check file size (5MB limit)
+      if (file.size > 5 * 1024 * 1024) {
+        showSnackbar('Image size should be less than 5MB', 'error');
+        return;
+      }
+      
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFormData(prev => ({
+          ...prev,
+          imageFile: file,
+          imagePreview: reader.result,
+          imageUrl: '' // Clear URL if file is selected
+        }));
+      };
+      reader.onerror = () => {
+        showSnackbar('Error reading the image file', 'error');
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setFormData(prev => ({
+      ...prev,
+      imageFile: null,
+      imagePreview: null,
+      imageUrl: ''
+    }));
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const handleAddProduct = () => {
     setSelectedProduct(null);
     setFormData({
@@ -158,6 +206,8 @@ export default function InventoryPage() {
       ageRange: '',
       sku: '',
       imageUrl: '',
+      imageFile: null,
+      imagePreview: null,
       status: 'in_stock'
     });
     setOpenDialog(true);
@@ -175,6 +225,13 @@ export default function InventoryPage() {
       ageRange: product.ageRange || '',
       sku: product.sku,
       imageUrl: product.imageUrl || '',
+      imageFile: null,
+      // Set imagePreview to the full URL if imageUrl exists
+      imagePreview: product.imageUrl ? 
+        (product.imageUrl.startsWith('http') ? 
+          product.imageUrl : 
+          `${process.env.REACT_APP_API_URL || 'http://localhost:8000'}${product.imageUrl}`) 
+        : null,
       status: product.status || 'in_stock'
     });
     setOpenDialog(true);
@@ -183,25 +240,38 @@ export default function InventoryPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const productData = {
-        ...formData,
-        price: parseFloat(formData.price),
-        stock: parseInt(formData.stock, 10)
-      };
-
-      if (selectedProduct) {
-        await inventoryService.updateProduct(selectedProduct.id, productData);
-        showSnackbar('Product updated successfully');
-      } else {
-        await inventoryService.createProduct(productData);
-        showSnackbar('Product created successfully');
+      setLoading(true);
+      
+      // Create a copy of form data to send
+      const formDataToSend = { ...formData };
+      
+      // If there's a new image file, make sure to include it
+      if (formData.imageFile) {
+        formDataToSend.imageFile = formData.imageFile;
       }
       
+      let updatedProduct;
+      if (selectedProduct) {
+        // Update existing product
+        updatedProduct = await inventoryService.updateProduct(selectedProduct.id, formDataToSend);
+        showSnackbar('Product updated successfully', 'success');
+      } else {
+        // Create new product
+        updatedProduct = await inventoryService.createProduct(formDataToSend);
+        showSnackbar('Product created successfully', 'success');
+      }
+      
+      // Refresh the product list
+      await fetchProducts();
+      
+      // Close the dialog
       setOpenDialog(false);
-      fetchProducts();
     } catch (error) {
       console.error('Error saving product:', error);
-      showSnackbar(error.response?.data?.message || 'Error saving product', 'error');
+      const errorMessage = error.response?.data?.error || 'Failed to save product';
+      showSnackbar(errorMessage, 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -228,7 +298,6 @@ export default function InventoryPage() {
       showSnackbar('Error updating stock', 'error');
     }
   };
-
 
   const statusColors = {
     in_stock: 'success',
@@ -345,14 +414,37 @@ export default function InventoryPage() {
                   <TableRow key={product.id}>
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                        {product.imageUrl && (
-                          <Box
-                            component="img"
-                            src={product.imageUrl}
-                            alt={product.name}
-                            sx={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 1 }}
-                          />
-                        )}
+                      {product.imageUrl ? (
+                        <Box
+                          component="img"
+                          src={product.imageUrl.startsWith('http') ? product.imageUrl : `${process.env.REACT_APP_API_URL || 'http://localhost:8000'}${product.imageUrl}`}
+                          alt={product.name}
+                          onError={(e) => {
+                            e.target.onerror = null; // Prevent infinite loop
+                            e.target.src = '/no-image-placeholder.png';
+                          }}
+                          sx={{ 
+                            width: 40, 
+                            height: 40, 
+                            objectFit: 'cover', 
+                            borderRadius: 1 
+                          }}
+                        />
+                      ) : (
+                        <Box 
+                          sx={{ 
+                            width: 40, 
+                            height: 40, 
+                            bgcolor: 'grey.200',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            borderRadius: 1
+                          }}
+                        >
+                          <Typography variant="caption" color="textSecondary">No Image</Typography>
+                        </Box>
+                      )}
                         <Box>
                           <Typography variant="body1">{product.name}</Typography>
                           <Typography variant="caption" color="textSecondary">
@@ -434,6 +526,84 @@ export default function InventoryPage() {
           </DialogTitle>
           <DialogContent dividers>
             <Box display="flex" flexDirection="column" gap={2} pt={1}>
+              <Box 
+                sx={{ 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  alignItems: 'center',
+                  mb: 2
+                }}
+              >
+                {formData.imagePreview || formData.imageUrl ? (
+                  <Box sx={{ position: 'relative', mb: 2 }}>
+                    <Avatar 
+                      src={formData.imagePreview || 
+                           (formData.imageUrl.startsWith('http') ? 
+                             formData.imageUrl : 
+                             `${process.env.REACT_APP_API_URL || 'http://localhost:8000'}${formData.imageUrl}`)} 
+                      alt="Preview" 
+                      sx={{ 
+                        width: 150, 
+                        height: 150,
+                        borderRadius: 1,
+                        objectFit: 'cover'
+                      }}
+                      variant="rounded"
+                      onError={(e) => {
+                        e.target.onerror = null;
+                        e.target.src = '/no-image-placeholder.png';
+                      }}
+                    />
+                    <IconButton
+                      onClick={handleRemoveImage}
+                      sx={{
+                        position: 'absolute',
+                        top: -10,
+                        right: -10,
+                        backgroundColor: 'background.paper',
+                        '&:hover': {
+                          backgroundColor: 'action.hover'
+                        }
+                      }}
+                    >
+                      <CancelIcon color="error" />
+                    </IconButton>
+                  </Box>
+                ) : (
+                  <Avatar 
+                    sx={{ 
+                      width: 100, 
+                      height: 100,
+                      mb: 1,
+                      backgroundColor: 'action.hover'
+                    }}
+                  >
+                    <CloudUpload fontSize="large" color="action" />
+                  </Avatar>
+                )}
+                <Button
+                  variant="outlined"
+                  component="label"
+                  startIcon={<CloudUpload />}
+                  sx={{ mt: 1 }}
+                >
+                  Upload Image
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    hidden
+                    accept="image/*"
+                    onChange={handleFileChange}
+                  />
+                </Button>
+                <Typography 
+                  variant="caption" 
+                  color="textSecondary"
+                  sx={{ mt: 1 }}
+                >
+                  {formData.imageFile ? formData.imageFile.name : 'JPG, PNG up to 5MB'}
+                </Typography>
+              </Box>
               <TextField
                 autoFocus
                 margin="dense"
@@ -545,29 +715,22 @@ export default function InventoryPage() {
                 />
               </Box>
               
-              {formData.imageUrl && (
-                <Box mt={1} textAlign="center">
-                  <Typography variant="caption" display="block" gutterBottom>
-                    Image Preview
-                  </Typography>
-                  <Box
-                    component="img"
-                    src={formData.imageUrl}
-                    alt="Preview"
-                    sx={{ 
-                      maxWidth: '100%', 
-                      maxHeight: 200, 
-                      objectFit: 'contain',
-                      border: '1px solid #eee',
-                      borderRadius: 1,
-                      p: 1
-                    }}
-                    onError={(e) => {
-                      e.target.style.display = 'none';
-                    }}
-                  />
-                </Box>
-              )}
+              {/* Status Select */}
+              <FormControl fullWidth margin="normal">
+                <InputLabel id="status-label">Status</InputLabel>
+                <Select
+                  labelId="status-label"
+                  id="status"
+                  value={formData.status}
+                  label="Status"
+                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                >
+                  <MenuItem value="in_stock">In Stock</MenuItem>
+                  <MenuItem value="low_stock">Low Stock</MenuItem>
+                  <MenuItem value="out_of_stock">Out of Stock</MenuItem>
+                  <MenuItem value="discontinued">Discontinued</MenuItem>
+                </Select>
+              </FormControl>
             </Box>
           </DialogContent>
           <DialogActions sx={{ p: 2 }}>
@@ -583,6 +746,7 @@ export default function InventoryPage() {
               color="primary" 
               variant="contained"
               startIcon={<Save />}
+              disabled={!formData.name || !formData.price || !formData.stock || !formData.category || !formData.sku}
             >
               {selectedProduct ? 'Update' : 'Create'} Product
             </Button>

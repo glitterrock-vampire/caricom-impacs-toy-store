@@ -9,7 +9,7 @@ import InventoryPage from './pages/InventoryPage';
 import CustomersPage from './pages/CustomersPage';
 import OrdersPage from './pages/OrdersPage';
 import AccountManagementPage from './pages/AccountManagementPage';
-import UserManagementPage from './pages/UserManagementPage'; 
+
 import LoginPage from './pages/LoginPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import { isAuthenticated } from './services/authService';
