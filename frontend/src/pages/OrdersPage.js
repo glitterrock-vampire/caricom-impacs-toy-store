@@ -137,13 +137,200 @@ export default function OrdersPage() {
     };
   }, [fetchOrders]);
 
+  const calculateOrderTotal = (order) => {
+    try {
+      // First, check if totalAmount is directly available and valid
+      if (order.totalAmount !== undefined && order.totalAmount !== null) {
+        const amount = parseFloat(order.totalAmount);
+        if (!isNaN(amount)) {
+          return amount;
+        }
+      }
+      
+      // If not, try to calculate from items if available
+      if (Array.isArray(order.items) && order.items.length > 0) {
+        const total = order.items.reduce((sum, item) => {
+          const quantity = parseFloat(item.quantity) || 0;
+          const price = parseFloat(item.price) || 0;
+          return sum + (quantity * price);
+        }, 0);
+        
+        // Round to 2 decimal places and convert back to number
+        return Math.round(total * 100) / 100;
+      }
+      
+      // If we have a total field but it wasn't caught above, try to use it
+      if (order.total !== undefined && order.total !== null) {
+        const amount = parseFloat(order.total);
+        if (!isNaN(amount)) {
+          return amount;
+        }
+      }
+      
+      console.warn('Could not determine order total, using 0');
+      return 0;
+      
+    } catch (error) {
+      console.error('Error calculating order total:', error);
+      return 0;
+    }
+  };
+
   const fetchOrderDetails = async (orderId) => {
     try {
-      const response = await api.get(`/api/orders/${orderId}`);
-      setOrderDetails(response.data);
+      // Set loading state
+      setOrderDetails({
+        id: orderId,
+        status: 'Loading...',
+        orderDate: new Date().toISOString(),
+        totalAmount: 0,
+        items: [],
+        customer: {
+          name: 'Loading...',
+          email: 'Loading...',
+          phone: 'Loading...'
+        }
+      });
+
+      try {
+        // First try to get the order directly by ID
+        const orderResponse = await api.get(`/api/orders/${orderId}`);
+        
+        // Handle the response based on its structure
+        let orderData;
+        if (orderResponse.data && orderResponse.data.orders) {
+          orderData = orderResponse.data.orders[0] || orderResponse.data.orders;
+        } else if (Array.isArray(orderResponse.data)) {
+          orderData = orderResponse.data[0] || orderResponse.data;
+        } else {
+          orderData = orderResponse.data;
+        }
+        
+        if (orderData) {
+          // Ensure we have customer data
+          let customer = orderData.customer || {};
+          
+          // If we have customerId but no customer object, try to fetch customer details
+          if ((!customer || !customer.id) && orderData.customerId) {
+            try {
+              const customerResponse = await api.get(`/api/customers/${orderData.customerId}`);
+              if (customerResponse.data) {
+                customer = customerResponse.data;
+              }
+            } catch (customerError) {
+              console.error('Error fetching customer details:', customerError);
+              // Continue with partial customer data
+            }
+          }
+          
+          // Calculate the total amount
+          const totalAmount = calculateOrderTotal(orderData);
+          
+          // Format the order data for the UI
+          const formattedOrder = {
+            ...orderData,
+            // Use orderNumber if available, otherwise fall back to ID
+            orderNumber: orderData.orderNumber || `ORD-${orderData.id}`,
+            totalAmount: totalAmount,
+            items: Array.isArray(orderData.items) ? orderData.items : [],
+            customer: {
+              id: customer.id || orderData.customerId || null,
+              name: customer.name || 'Unknown Customer',
+              email: customer.email || 'No email provided',
+              phone: customer.phone || 'No phone provided'
+            }
+          };
+          
+          setOrderDetails(formattedOrder);
+          return;
+        }
+      } catch (directError) {
+        console.log('Direct order fetch failed, trying fallback...', directError);
+      }
+      
+      // Fallback: Try to fetch all orders and find the specific one
+      try {
+        const response = await api.get('/api/orders');
+        let orders = [];
+        
+        if (response.data && Array.isArray(response.data.orders)) {
+          orders = response.data.orders;
+        } else if (Array.isArray(response.data)) {
+          orders = response.data;
+        }
+        
+        // Try to find by ID first
+        let order = orders.find(o => o.id === parseInt(orderId));
+        
+        // If not found by ID, try to find by orderNumber
+        if (!order) {
+          order = orders.find(o => o.orderNumber === orderId);
+        }
+        
+        if (order) {
+          // Ensure we have customer data
+          let customer = order.customer || {};
+          
+          // If we have customerId but no customer object, try to fetch customer details
+          if ((!customer || !customer.id) && order.customerId) {
+            try {
+              const customerResponse = await api.get(`/api/customers/${order.customerId}`);
+              if (customerResponse.data) {
+                customer = customerResponse.data;
+              }
+            } catch (customerError) {
+              console.error('Error fetching customer details:', customerError);
+              // Continue with partial customer data
+            }
+          }
+          
+          // Calculate the total amount
+          const totalAmount = calculateOrderTotal(order);
+          
+          // Format the order data for the UI
+          const formattedOrder = {
+            ...order,
+            // Use orderNumber if available, otherwise fall back to ID
+            orderNumber: order.orderNumber || `ORD-${order.id}`,
+            totalAmount: totalAmount,
+            items: Array.isArray(order.items) ? order.items : [],
+            customer: {
+              id: customer.id || order.customerId || null,
+              name: customer.name || 'Unknown Customer',
+              email: customer.email || 'No email provided',
+              phone: customer.phone || 'No phone provided'
+            }
+          };
+          
+          setOrderDetails(formattedOrder);
+          return;
+        }
+      } catch (fallbackError) {
+        console.error('Fallback order fetch failed:', fallbackError);
+        throw fallbackError;
+      }
+      
+      throw new Error('Order not found');
+      
     } catch (error) {
-      console.error('Error fetching order details:', error);
+      console.error('Error in fetchOrderDetails:', error);
       showSnackbar('Failed to load order details', 'error');
+      
+      // Set error state with the order ID
+      setOrderDetails({
+        id: orderId,
+        orderNumber: `ORD-${orderId}`,
+        status: 'Error',
+        orderDate: new Date().toISOString(),
+        totalAmount: 0,
+        items: [],
+        customer: {
+          id: null,
+          name: 'Error loading customer',
+          email: 'Error',
+          phone: 'Error'
+        }
+      });
     }
   };
 
@@ -440,36 +627,124 @@ export default function OrdersPage() {
           {orderDetails ? (
             <Box>
               <Typography variant="h6" gutterBottom>Customer Information</Typography>
-              <Typography>Name: {orderDetails.customer?.name}</Typography>
-              <Typography>Email: {orderDetails.customer?.email}</Typography>
-              <Typography>Phone: {orderDetails.customer?.phone || 'N/A'}</Typography>
+              {orderDetails.customer ? (
+                <>
+                  <Typography>Name: {orderDetails.customer.name || 'N/A'}</Typography>
+                  <Typography>Email: {orderDetails.customer.email || 'N/A'}</Typography>
+                  <Typography>Phone: {orderDetails.customer.phone || 'N/A'}</Typography>
+                </>
+              ) : orderDetails.customerId ? (
+                <Typography>Loading customer details...</Typography>
+              ) : (
+                <Typography>No customer information available</Typography>
+              )}
+              
+              {/* Debug info - can be removed in production */}
+              {process.env.NODE_ENV === 'development' && (
+                <Box mt={2} p={1} bgcolor="#f5f5f5" borderRadius={1}>
+                  <Typography variant="caption" color="textSecondary">
+                    <strong>Order ID:</strong> {orderDetails.id}<br />
+                    <strong>Customer ID:</strong> {orderDetails.customerId || orderDetails.customer?.id || 'N/A'}
+                  </Typography>
+                </Box>
+              )}
               
               <Typography variant="h6" gutterBottom sx={{ mt: 3 }}>Order Information</Typography>
               <Typography>Order Date: {formatDate(orderDetails.orderDate)}</Typography>
               <Typography>Status: {orderDetails.status}</Typography>
-              <Typography>Total: ${orderDetails.totalAmount?.toFixed(2)}</Typography>
+              <Typography>
+                Total: ${typeof orderDetails.totalAmount === 'number' 
+                  ? orderDetails.totalAmount.toFixed(2) 
+                  : '0.00'}
+              </Typography>
               
-              <Typography variant="h6" gutterBottom sx={{ mt: 3 }}>Items</Typography>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Product</TableCell>
-                    <TableCell>Quantity</TableCell>
-                    <TableCell>Price</TableCell>
-                    <TableCell>Total</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {orderDetails.items?.map((item, index) => (
-                    <TableRow key={index}>
-                      <TableCell>{item.product?.name || item.productName}</TableCell>
-                      <TableCell>{item.quantity}</TableCell>
-                      <TableCell>${item.price?.toFixed(2)}</TableCell>
-                      <TableCell>${(item.quantity * item.price).toFixed(2)}</TableCell>
+              <Typography variant="h6" gutterBottom sx={{ mt: 3 }}>Order Items</Typography>
+              <TableContainer component={Paper} sx={{ mb: 3 }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Product</TableCell>
+                      <TableCell align="right">Quantity</TableCell>
+                      <TableCell align="right">Unit Price</TableCell>
+                      <TableCell align="right">Total</TableCell>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHead>
+                  <TableBody>
+                    {orderDetails.items?.length > 0 ? (
+                      <>
+                        {orderDetails.items.map((item, index) => {
+                          const quantity = Number(item.quantity) || 0;
+                          const price = Number(item.price) || 0;
+                          const itemTotal = quantity * price;
+                          
+                          return (
+                            <TableRow key={index}>
+                              <TableCell component="th" scope="row">
+                                {item.product?.name || item.productName || 'Unnamed Product'}
+                              </TableCell>
+                              <TableCell align="right">{quantity}</TableCell>
+                              <TableCell align="right">${price.toFixed(2)}</TableCell>
+                              <TableCell align="right">${itemTotal.toFixed(2)}</TableCell>
+                            </TableRow>
+                          );
+                        })}
+                        
+                        {/* Subtotal, Tax, and Grand Total */}
+                        {(() => {
+                          const subtotal = orderDetails.items.reduce((sum, item) => {
+                            const quantity = Number(item.quantity) || 0;
+                            const price = Number(item.price) || 0;
+                            return sum + (quantity * price);
+                          }, 0);
+                          
+                          // Calculate tax (assuming 10% tax rate)
+                          const taxRate = 0.10;
+                          const tax = subtotal * taxRate;
+                          const grandTotal = subtotal + tax;
+                          
+                          return (
+                            <>
+                              <TableRow>
+                                <TableCell rowSpan={3} />
+                                <TableCell colSpan={2} align="right">
+                                  <strong>Subtotal:</strong>
+                                </TableCell>
+                                <TableCell align="right">
+                                  <strong>${subtotal.toFixed(2)}</strong>
+                                </TableCell>
+                              </TableRow>
+                              <TableRow>
+                                <TableCell colSpan={2} align="right">
+                                  <strong>Tax ({taxRate * 100}%):</strong>
+                                </TableCell>
+                                <TableCell align="right">
+                                  <strong>${tax.toFixed(2)}</strong>
+                                </TableCell>
+                              </TableRow>
+                              <TableRow>
+                                <TableCell colSpan={2} align="right">
+                                  <strong>Grand Total:</strong>
+                                </TableCell>
+                                <TableCell align="right">
+                                  <strong>${grandTotal.toFixed(2)}</strong>
+                                </TableCell>
+                              </TableRow>
+                            </>
+                          );
+                        })()}
+                      </>
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={4} align="center" sx={{ py: 3 }}>
+                          <Typography color="textSecondary">
+                            No items found in this order
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
             </Box>
           ) : (
             <CircularProgress />
