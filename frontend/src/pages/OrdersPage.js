@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { debounce } from 'lodash';
+import { CancelToken, isCancel } from 'axios';
 import {
   Container,
   Typography,
@@ -24,9 +25,12 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions
+  DialogActions,
+  Snackbar,
+  Alert,
 } from '@mui/material';
-import { Visibility, Edit, LocalShipping } from '@mui/icons-material';
+import { Visibility, LocalShipping, Edit, Delete } from '@mui/icons-material';
+import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 
 export default function OrdersPage() {
@@ -37,12 +41,19 @@ export default function OrdersPage() {
   const [totalCount, setTotalCount] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [openDialog, setOpenDialog] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [orderDetails, setOrderDetails] = useState(null);
   const [error, setError] = useState('');
+  const [openDialog, setOpenDialog] = useState(false);
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'success'
+  });
+  const navigate = useNavigate();
 
   const orderStatuses = [
+    { value: '', label: 'All Statuses' },
     { value: 'pending', label: 'Pending' },
     { value: 'processing', label: 'Processing' },
     { value: 'shipped', label: 'Shipped' },
@@ -50,69 +61,81 @@ export default function OrdersPage() {
     { value: 'cancelled', label: 'Cancelled' }
   ];
 
-  // Create a debounced version of setSearchTerm
-  const debouncedSetSearchTerm = React.useCallback(
+  const showSnackbar = useCallback((message, severity = 'success') => {
+    setSnackbar({ open: true, message, severity });
+  }, []);
+
+  const handleCloseSnackbar = () => {
+    setSnackbar(prev => ({ ...prev, open: false }));
+  };
+
+  const debouncedSetSearchTerm = useCallback(
     debounce((value) => {
       setSearchTerm(value);
       setPage(0);
     }, 500),
-    []
+    [setSearchTerm, setPage]
   );
 
-  // Cleanup debounce on component unmount
-  React.useEffect(() => {
+  useEffect(() => {
     return () => {
       debouncedSetSearchTerm.cancel();
     };
   }, [debouncedSetSearchTerm]);
-  useEffect(() => {
-    fetchOrders();
-  }, [page, rowsPerPage, searchTerm, statusFilter]);
 
-  const fetchOrders = async () => {
+  const fetchOrders = useCallback(async () => {
+    let isMounted = true;
+    const source = CancelToken.source();
+
     try {
       setLoading(true);
-      setError(''); // Clear any previous errors
-      
-      // Prepare query parameters
+      setError('');
+
       const params = {
         page: page + 1,
         limit: rowsPerPage,
+        status: statusFilter,
+        search: searchTerm
       };
-  
-      // Add search filter if provided
-      if (searchTerm) {
-        params.search = searchTerm;
+
+      const response = await api.get('/api/orders', {
+        params,
+        cancelToken: source.token
+      });
+
+      if (isMounted) {
+        const { data } = response;
+        setOrders(Array.isArray(data) ? data : data.orders || []);
+        setTotalCount(data.pagination?.total || data.length || 0);
       }
-  
-      // Add status filter if provided
-      if (statusFilter) {
-        params.status = statusFilter;
+    } catch (err) {
+      if (isMounted && !isCancel(err)) {
+        console.error('Error fetching orders:', err);
+        setError('Failed to load orders. Please try again.');
+        showSnackbar('Failed to load orders', 'error');
       }
-  
-      console.log('Fetching orders with params:', params);
-      
-      const response = await api.get('/api/orders', { params });
-      
-      // Handle the response structure
-      // The backend should return { orders: [], pagination: { total, page, limit, pages } }
-      const ordersData = Array.isArray(response.data.orders) ? response.data.orders : [];
-      const total = response.data.pagination?.total || ordersData.length;
-      
-      console.log('Fetched orders:', ordersData);
-      console.log('Pagination info:', response.data.pagination);
-      
-      setOrders(ordersData);
-      setTotalCount(total);
-    } catch (error) {
-      console.error('Error fetching orders:', error);
-      setError('Failed to load orders. Please try again later.');
-      setOrders([]);
-      setTotalCount(0);
     } finally {
-      setLoading(false);
+      if (isMounted) {
+        setLoading(false);
+      }
     }
-  };
+
+    return () => {
+      isMounted = false;
+      source.cancel('Operation canceled by the user.');
+    };
+  }, [page, rowsPerPage, statusFilter, searchTerm, showSnackbar]);
+
+  useEffect(() => {
+    const cleanup = fetchOrders();
+    return () => {
+      if (cleanup && typeof cleanup.then === 'function') {
+        cleanup.catch(() => {});
+      } else if (typeof cleanup === 'function') {
+        cleanup();
+      }
+    };
+  }, [fetchOrders]);
 
   const fetchOrderDetails = async (orderId) => {
     try {
@@ -120,6 +143,7 @@ export default function OrdersPage() {
       setOrderDetails(response.data);
     } catch (error) {
       console.error('Error fetching order details:', error);
+      showSnackbar('Failed to load order details', 'error');
     }
   };
 
@@ -134,15 +158,13 @@ export default function OrdersPage() {
 
   const handleSearch = (event) => {
     const value = event.target.value;
-    // Update the input field immediately for better UX
     setSearchTerm(value);
-    // Use the debounced function to update the search term after a delay
     debouncedSetSearchTerm(value);
   };
 
   const handleStatusFilter = (event) => {
     setStatusFilter(event.target.value);
-    setPage(0); // Reset to first page when changing status
+    setPage(0);
   };
 
   const handleViewOrder = async (order) => {
@@ -151,29 +173,49 @@ export default function OrdersPage() {
     setOpenDialog(true);
   };
 
+  const handleEditOrder = (order) => {
+    navigate(`/orders/edit/${order.id}`);
+  };
+
+  const handleDeleteOrder = async (order) => {
+    if (window.confirm('Are you sure you want to delete this order?')) {
+      try {
+        await api.delete(`/api/orders/${order.id}`);
+        await fetchOrders();
+        showSnackbar('Order deleted successfully', 'success');
+      } catch (error) {
+        console.error('Error deleting order:', error);
+        showSnackbar('Failed to delete order', 'error');
+      }
+    }
+  };
+
   const handleUpdateStatus = async (orderId, newStatus) => {
     try {
       await api.put(`/api/orders/${orderId}`, { status: newStatus });
-      fetchOrders();
+      await fetchOrders();
+      showSnackbar(`Order status updated to ${newStatus}`, 'success');
     } catch (error) {
       console.error('Error updating order status:', error);
+      const message = error.response?.data?.message || 'Failed to update order status';
+      showSnackbar(message, 'error');
     }
   };
 
   const getStatusColor = (status) => {
     switch (status?.toLowerCase()) {
       case 'pending':
-        return 'warning';
+        return { text: '#B76E00', background: '#FFF3E0' };
       case 'processing':
-        return 'info';
+        return { text: '#0057B7', background: '#E3F2FD' };
       case 'shipped':
-        return 'primary';
+        return { text: '#5D4037', background: '#EFEBE9' };
       case 'delivered':
-        return 'success';
+        return { text: '#1B5E20', background: '#E8F5E9' };
       case 'cancelled':
-        return 'error';
+        return { text: '#C62828', background: '#FFEBEE' };
       default:
-        return 'default';
+        return { text: '#424242', background: '#F5F5F5' };
     }
   };
 
@@ -187,6 +229,13 @@ export default function OrdersPage() {
         <Typography variant="h4" component="h1">
           Order Management
         </Typography>
+        <Button 
+          variant="contained" 
+          color="primary"
+          onClick={() => navigate('/orders/new')}
+        >
+          New Order
+        </Button>
       </Box>
 
       <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
@@ -241,9 +290,6 @@ export default function OrdersPage() {
               )
             }
           >
-            <MenuItem value="">
-              <em>All Statuses</em>
-            </MenuItem>
             {orderStatuses.map((status) => (
               <MenuItem key={status.value} value={status.value}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -259,6 +305,7 @@ export default function OrdersPage() {
                           shipped: theme.palette.primary.main,
                           delivered: theme.palette.success.main,
                           cancelled: theme.palette.error.main,
+                          '': theme.palette.grey[500]
                         };
                         return colorMap[status.value] || theme.palette.grey[500];
                       },
@@ -277,7 +324,7 @@ export default function OrdersPage() {
           <Table stickyHeader>
             <TableHead>
               <TableRow>
-                <TableCell>Order ID</TableCell>
+                <TableCell>Order #</TableCell>
                 <TableCell>Customer</TableCell>
                 <TableCell>Date</TableCell>
                 <TableCell>Total</TableCell>
@@ -287,65 +334,90 @@ export default function OrdersPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-  {loading ? (
-    <TableRow>
-      <TableCell colSpan={7} align="center">
-        <CircularProgress />
-      </TableCell>
-    </TableRow>
-  ) : orders.length === 0 ? (
-    <TableRow>
-      <TableCell colSpan={7} align="center">
-        {error || 'No orders found'}
-      </TableCell>
-    </TableRow>
-  ) : (
-    orders.map((order) => (
-      <TableRow key={order.id} hover>
-        <TableCell>#{order.orderNumber || order.id}</TableCell>
-        <TableCell>
-          {order.customer?.name || 'N/A'}
-          <br />
-          <Typography variant="caption" color="textSecondary">
-            {order.customer?.email || ''}
-          </Typography>
-        </TableCell>
-        <TableCell>
-          {order.orderDate ? new Date(order.orderDate).toLocaleDateString() : 'N/A'}
-        </TableCell>
-        <TableCell>${order.totalAmount?.toFixed(2) || '0.00'}</TableCell>
-        <TableCell>
-          <Chip
-            label={order.status?.charAt(0).toUpperCase() + order.status?.slice(1) || 'N/A'}
-            color={getStatusColor(order.status)}
-            size="small"
-          />
-        </TableCell>
-        <TableCell>
-          {Array.isArray(order.items) ? order.items.length : 0}
-        </TableCell>
-        <TableCell>
-          <IconButton 
-            onClick={() => handleViewOrder(order)} 
-            size="small"
-            title="View Order Details"
-          >
-            <Visibility />
-          </IconButton>
-          {order.status === 'processing' && (
-            <IconButton 
-              onClick={() => handleUpdateStatus(order.id, 'shipped')} 
-              size="small"
-              title="Mark as Shipped"
-            >
-              <LocalShipping />
-            </IconButton>
-          )}
-        </TableCell>
-      </TableRow>
-    ))
-  )}
-</TableBody>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={7} align="center">
+                    <CircularProgress />
+                  </TableCell>
+                </TableRow>
+              ) : orders.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} align="center">
+                    {error || 'No orders found'}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                orders.map((order) => (
+                  <TableRow key={order.id} hover>
+                    <TableCell>#{order.orderNumber || order.id}</TableCell>
+                    <TableCell>
+                      {order.customer?.name || 'N/A'}
+                      <br />
+                      <Typography variant="caption" color="textSecondary">
+                        {order.customer?.email || ''}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      {order.orderDate ? formatDate(order.orderDate) : 'N/A'}
+                    </TableCell>
+                    <TableCell>${order.totalAmount?.toFixed(2) || '0.00'}</TableCell>
+                    <TableCell>
+                      <Box
+                        sx={{
+                          color: getStatusColor(order.status).text,
+                          backgroundColor: getStatusColor(order.status).background,
+                          padding: '4px 12px',
+                          borderRadius: '12px',
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                          textTransform: 'capitalize',
+                          display: 'inline-block'
+                        }}
+                      >
+                        {order.status}
+                      </Box>
+                    </TableCell>
+                    <TableCell>
+                      {Array.isArray(order.items) ? order.items.length : 0}
+                    </TableCell>
+                    <TableCell>
+                      <IconButton 
+                        onClick={() => handleViewOrder(order)} 
+                        size="small"
+                        title="View Order Details"
+                      >
+                        <Visibility />
+                      </IconButton>
+                      <IconButton 
+                        onClick={() => handleEditOrder(order)} 
+                        size="small"
+                        title="Edit Order"
+                        sx={{ color: 'primary.main' }}
+                      >
+                        <Edit />
+                      </IconButton>
+                      <IconButton 
+                        onClick={() => handleDeleteOrder(order)} 
+                        size="small"
+                        title="Delete Order"
+                        sx={{ color: 'error.main' }}
+                      >
+                        <Delete />
+                      </IconButton>
+                      {order.status === 'processing' && (
+                        <IconButton 
+                          onClick={() => handleUpdateStatus(order.id, 'shipped')} 
+                          size="small"
+                          title="Mark as Shipped"
+                        >
+                          <LocalShipping />
+                        </IconButton>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
           </Table>
         </TableContainer>
         <TablePagination
@@ -418,6 +490,18 @@ export default function OrdersPage() {
           )}
         </DialogActions>
       </Dialog>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Container>
   );
 }

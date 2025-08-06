@@ -53,46 +53,74 @@ const CustomerDetailCard = ({
 
   // Calculate derived values
   const { totalSpent, totalOrders, avgOrderValue, lastOrderDate } = useMemo(() => {
-    // Calculate from orders if not provided
-    const calculatedTotalOrders = propTotalOrders >= 0 ? propTotalOrders : orders.length;
-    
-    const calculatedTotalSpent = propTotalSpent >= 0 
-      ? propTotalSpent 
-      : orders.reduce((sum, order) => sum + parseFloat(order.totalAmount || order.total || 0), 0);
-    
-    const calculatedAvgOrder = propAvgOrderValue >= 0
-      ? propAvgOrderValue
-      : (calculatedTotalOrders > 0 ? calculatedTotalSpent / calculatedTotalOrders : 0);
-    
-    // Find the most recent order date
-    let calculatedLastOrder = propLastOrderDate;
-    if (!calculatedLastOrder && orders.length > 0) {
-      const sortedOrders = [...orders].sort((a, b) => {
-        const dateA = new Date(a.orderDate || a.date || 0);
-        const dateB = new Date(b.orderDate || b.date || 0);
-        return dateB - dateA;
-      });
-      calculatedLastOrder = sortedOrders[0]?.orderDate || sortedOrders[0]?.date;
-    }
+    try {
+      // Calculate from orders if not provided
+      const calculatedTotalOrders = propTotalOrders >= 0 ? propTotalOrders : (Array.isArray(orders) ? orders.length : 0);
+      
+      const calculatedTotalSpent = propTotalSpent >= 0 
+        ? propTotalSpent 
+        : (Array.isArray(orders) ? orders.reduce((sum, order) => {
+            const amount = parseFloat(order.totalAmount || order.total || 0);
+            return isNaN(amount) ? sum : sum + amount;
+          }, 0) : 0);
+      
+      const calculatedAvgOrder = propAvgOrderValue >= 0
+        ? propAvgOrderValue
+        : (calculatedTotalOrders > 0 ? calculatedTotalSpent / calculatedTotalOrders : 0);
+      
+      // Find the most recent order date
+      let calculatedLastOrder = propLastOrderDate;
+      if (!calculatedLastOrder && Array.isArray(orders) && orders.length > 0) {
+        const validOrders = orders.filter(order => order && (order.orderDate || order.date));
+        if (validOrders.length > 0) {
+          const sortedOrders = [...validOrders].sort((a, b) => {
+            const dateA = new Date(a.orderDate || a.date);
+            const dateB = new Date(b.orderDate || b.date);
+            return dateB - dateA;
+          });
+          calculatedLastOrder = sortedOrders[0]?.orderDate || sortedOrders[0]?.date;
+        }
+      }
 
-    return {
-      totalSpent: calculatedTotalSpent,
-      totalOrders: calculatedTotalOrders,
-      avgOrderValue: calculatedAvgOrder,
-      lastOrderDate: calculatedLastOrder
-    };
+      return {
+        totalSpent: calculatedTotalSpent,
+        totalOrders: calculatedTotalOrders,
+        avgOrderValue: calculatedAvgOrder,
+        lastOrderDate: calculatedLastOrder
+      };
+    } catch (error) {
+      console.error('Error calculating order statistics:', error);
+      return {
+        totalSpent: propTotalSpent || 0,
+        totalOrders: propTotalOrders || 0,
+        avgOrderValue: propAvgOrderValue || 0,
+        lastOrderDate: propLastOrderDate || null
+      };
+    }
   }, [orders, propTotalSpent, propTotalOrders, propAvgOrderValue, propLastOrderDate]);
 
-  const recentOrders = useMemo(() => 
-    [...orders]
-      .sort((a, b) => {
-        const dateA = new Date(a.orderDate || a.date || 0);
-        const dateB = new Date(b.orderDate || b.date || 0);
-        return dateB - dateA;
-      })
-      .slice(0, 5),
-    [orders]
-  );
+  const recentOrders = useMemo(() => {
+    if (!Array.isArray(orders) || orders.length === 0) return [];
+    
+    try {
+      return [...orders]
+        .filter(order => order && (order.orderDate || order.date))
+        .sort((a, b) => {
+          try {
+            const dateA = new Date(a.orderDate || a.date);
+            const dateB = new Date(b.orderDate || b.date);
+            return dateB - dateA;
+          } catch (error) {
+            console.error('Error sorting orders:', error);
+            return 0;
+          }
+        })
+        .slice(0, 5);
+    } catch (error) {
+      console.error('Error processing recent orders:', error);
+      return [];
+    }
+  }, [orders]);
 
   const handleClickOpen = () => setOpen(true);
   const handleClose = () => setOpen(false);
