@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
+import path from 'path';
 import { swaggerUi, specs } from './config/swagger';
 
 // Import routes
@@ -24,14 +25,6 @@ const app = express();
 app.use(helmet());
 app.use(compression());
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'),
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100'),
-  message: 'Too many requests from this IP, please try again later.',
-});
-app.use('/api/', limiter);
-
 // CORS configuration
 const corsOptions = {
   origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
@@ -43,15 +36,15 @@ const corsOptions = {
     // In production, only allow specific origins
     const allowedOrigins = [
       'http://localhost:3000',
-      'http://localhost:3001',
-      process.env.FRONTEND_URL
-    ].filter(Boolean);
+      'http://127.0.0.1:3000',
+      'http://localhost:8000',
+      'http://127.0.0.1:8000'
+    ];
     
-    // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error(`Not allowed by CORS. Origin: ${origin}`));
+      callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
@@ -61,7 +54,35 @@ const corsOptions = {
   optionsSuccessStatus: 200 // Some legacy browsers choke on 204
 };
 
+// Apply CORS to all routes
 app.use(cors(corsOptions));
+
+// Handle preflight requests
+app.options('*', cors(corsOptions));
+
+// Serve static files from uploads directory
+app.use('/uploads', (req, res, next) => {
+  // Set CORS headers for uploads
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Methods', 'GET');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  next();
+}, express.static(path.join(__dirname, '../uploads'), {
+  setHeaders: (res) => {
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  }
+}));
+
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'),
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100'),
+  message: 'Too many requests from this IP, please try again later.',
+});
+app.use('/api/', limiter);
+
+// CORS configuration is already applied at the top level
+// This ensures all routes have CORS enabled
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));

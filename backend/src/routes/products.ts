@@ -229,15 +229,16 @@ router.put('/:id', authenticate, requireAdmin, upload.single('image'), async (re
       }
     }
 
-    // If stock is being updated, recalculate status
-    if (updateData.stock !== undefined) {
-      if (updateData.stock === 0) {
-        updateData.status = 'out_of_stock';
-      } else if (updateData.stock <= 10) {
-        updateData.status = 'low_stock';
-      } else {
-        updateData.status = 'in_stock';
-      }
+    // Always recalculate status based on current stock
+    const currentStock = updateData.stock !== undefined ? updateData.stock : 
+      (await prisma.product.findUnique({ where: { id } }))?.stock || 0;
+      
+    if (currentStock === 0) {
+      updateData.status = 'out_of_stock';
+    } else if (currentStock <= 10) {
+      updateData.status = 'low_stock';
+    } else {
+      updateData.status = 'in_stock';
     }
 
     const product = await prisma.product.update({
