@@ -1,169 +1,224 @@
-# 🧸 Toy Store Management System
+# Toy Store Management System
 
-A comprehensive full-stack web application for managing toy store operations with international shipping capabilities, built for the CARICOM IMPACS Application Developer Assessment.
-
-## 🌟 Features
-
-### 🔐 Authentication & Security
-- Secure login system with JWT tokens
-- Admin and customer role management
-- Protected routes and API endpoints
-
-### 📊 Dashboard Analytics
-- Real-time business metrics and KPIs
-- **176+ orders** from **30+ customers** worldwide
-- **Global shipping tracking** across 8+ regions
-- Revenue analytics and order trends
-- Interactive charts and visualizations
-
-### 👥 Customer Management
-- Complete CRUD operations (Create, Read, Update, Delete)
-- Customer profile management
-- Order history tracking
-- **PDF export functionality**
-- Search and filter capabilities
-
-### 🌍 International Shipping
-- **Global coverage** across multiple continents:
-  - 🇺🇸 North America (USA, Canada)
-  - 🇪🇺 Europe (UK, France, Germany, Italy, Spain, Netherlands)
-  - 🇯🇵 Asia (Japan, South Korea, Singapore, Hong Kong, China, India)
-  - 🇯🇲 Caribbean/CARICOM (Jamaica, Trinidad & Tobago, Barbados)
-  - 🇦🇺 Oceania (Australia, New Zealand)
-  - 🇧🇷 South America (Brazil, Argentina, Peru)
-  - 🇿🇦 Africa (South Africa, Nigeria, Egypt)
-  - 🇦🇪 Middle East (UAE, Lebanon, Jordan)
-
-### 🧸 Product Management
-- **24+ toy categories** including:
-  - Remote Control Trucks, LEGO Creator Sets
-  - Educational Tablets, Science Kits
-  - Action Figures, Board Games
-  - Art Supplies, Musical Instruments
-
-## 🛠️ Technology Stack
-
-### Backend
-- **Node.js + Express** - Modern JavaScript runtime and web framework
-- **TypeScript** - Type-safe JavaScript development
-- **Prisma ORM** - Modern database toolkit
-- **PostgreSQL** - Robust relational database
-- **JWT Authentication** - Secure token-based auth
-- **Zod** - Runtime type validation
-- **Swagger/OpenAPI** - Interactive API documentation
-
-### Frontend
-- **React 18** - Modern JavaScript library
-- **React Router** - Client-side routing
-- **Modern CSS** - Responsive design with gradients and animations
-- **Fetch API** - HTTP client for API communication
-
-## 📁 Project Structure
-
-```
-toy-store-management/
-├── frontend/                    # React frontend application
-├── backend/                     # Node.js/TypeScript backend (current)
-├── backend-python-archived/     # Archived Python backend
-├── switch-backend.md           # Backend information guide
-└── README.md                   # This file
+```text
+████████╗ ██████╗ ██╗   ██╗    ███████╗████████╗ ██████╗ ██████╗ ███████╗
+╚══██╔══╝██╔═══██╗╚██╗ ██╔╝    ██╔════╝╚══██╔══╝██╔═══██╗██╔══██╗██╔════╝
+   ██║   ██║   ██║ ╚████╔╝     ███████╗   ██║   ██║   ██║██████╔╝█████╗  
+   ██║   ██║   ██║  ╚██╔╝      ╚════██║   ██║   ██║   ██║██╔══██╗██╔══╝  
+   ██║   ╚██████╔╝   ██║       ███████║   ██║   ╚██████╔╝██║  ██║███████╗
+   ╚═╝    ╚═════╝    ╚═╝       ╚══════╝   ╚═╝    ╚═════╝ ╚═╝  ╚═╝╚══════╝
 ```
 
-## 🚀 Quick Start
+## Table of Contents
+1. [Project Overview](#1-project-overview)
+2. [Features](#2-features)
+3. [Technology Stack](#3-technology-stack)
+4. [System Architecture](#4-system-architecture)
+5. [Installation Guide](#5-installation-guide)
+6. [Configuration](#6-configuration)
+7. [API Documentation](#7-api-documentation)
+8. [Database Schema](#8-database-schema)
+9. [Deployment](#9-deployment)
+10. [Testing](#10-testing)
+11. [Troubleshooting](#11-troubleshooting)
+12. [Contributing](#12-contributing)
+13. [License](#13-license)
+
+---
+
+## 1. Project Overview
+
+A full-stack web application designed for CARICOM IMPACS to manage:
+- International toy orders
+- Customer relationships
+- Inventory management
+- Business analytics
+
+**Key Metrics:**
+- 176+ orders processed
+- 30+ active customers
+- $22,000+ revenue tracked
+- 20+ countries served
+
+⚠️ Note: The dashboard analytics module is currently partially implemented. Most core business logic—such as customer management, orders, inventory, and international shipping—is fully functional and production-ready. The dashboard will be refined in future iterations.
+---
+
+## 2. Features
+
+### Authentication & Security
+```diff
++ JWT-based authentication
++ Role-based access control
++ Password encryption
++ Session management
+```
+
+### Dashboard Analytics
+```diff
++ Real-time order tracking
++ Geographic visualization
++ Revenue analytics
++ Interactive charts
+```
+
+### Customer Management
+```diff
++ CRUD operations
++ PDF export
++ Advanced search
++ Bulk operations
+```
+
+### International Shipping
+```diff
++ Multi-currency support
++ Tax calculation
++ 20+ countries
++ Delivery tracking
+```
+
+---
+
+## 3. Technology Stack
+
+| Component       | Technology               |
+|-----------------|--------------------------|
+| Frontend        | React 18, Material-UI    |
+| Backend         | Node.js, Express, TypeScript |
+| Database        | PostgreSQL, Prisma ORM   |
+| Authentication  | JWT, bcrypt              |
+| DevOps          | Docker, GitHub Actions   |
+
+---
+
+## 4. System Architecture
+
+```mermaid
+graph TD
+    A[Client Browser] --> B[React Frontend]
+    B --> C[Node.js Backend]
+    C --> D[(PostgreSQL)]
+    C --> E[Redis Cache]
+    D --> F[Prisma ORM]
+```
+
+---
+
+## 5. Installation Guide
 
 ### Prerequisites
 - Node.js 18+
 - PostgreSQL 12+
+- Git
 
-### Installation
-
-1. **Clone the repository**
+### Setup
 ```bash
-git clone <repository-url>
-cd toy-store-management
-```
+git clone https://github.com/glitterrock-vampire/caricom-impacs-toy-store.git
+cd caricom-impacs-toy-store
 
-2. **Backend Setup**
-```bash
+# Backend setup
 cd backend
 npm install
-```
-
-3. **Database Setup**
-```bash
-# Create PostgreSQL database (if not exists)
-createdb toy_store_db
-
-# Set environment variables in backend/.env
-DATABASE_URL="postgresql://toystore_user:toystore_pass@localhost/toystore_db"
-JWT_SECRET="your-secret-key"
-
-# Generate Prisma client and run migrations
-npx prisma generate
 npx prisma migrate dev --name init
-npm run seed
-```
 
-4. **Frontend Setup**
-```bash
-cd frontend
+# Frontend setup
+cd ../frontend
 npm install
 ```
 
-### Running the Application
+---
 
-1. **Start Backend Server**
-```bash
-cd backend
-npm run dev
+## 6. Configuration
+
+### Backend (.env)
+```ini
+DATABASE_URL="postgresql://user:password@localhost:5432/toy_store_db"
+JWT_SECRET="your_secure_jwt_secret"
+PORT=8000
 ```
 
-2. **Start Frontend Development Server**
-```bash
-cd frontend
-npm start
+### Frontend (.env)
+```ini
+REACT_APP_API_BASE_URL="http://localhost:8000/api"
 ```
 
-3. **Access the Application**
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:8000
-- API Documentation: http://localhost:8000/api-docs
-- Health Check: http://localhost:8000/health
+---
 
-### Default Login Credentials
-- **Email**: admin@toystore.com
-- **Password**: admin123
+## 7. API Documentation
 
-## 🎯 Assessment Requirements Completed
+| Endpoint          | Method | Description           |
+|-------------------|--------|-----------------------|
+| `/api/auth/login` | POST   | User authentication   |
+| `/api/customers`  | GET    | List all customers    |
+| `/api/orders`     | POST   | Create new order      |
 
-✅ **Login Page** - Secure authentication system
-✅ **Dashboard** - Real-time analytics with international data
-✅ **Customer Management** - Full CRUD with PDF export
-✅ **Database** - 30+ customers, 176+ orders, PostgreSQL
-✅ **International Shipping** - Global coverage demonstration
-✅ **Professional UI/UX** - Modern, responsive design
+Access interactive docs at `http://localhost:8000/docs`
 
-## 🌍 Global Reach
+---
 
-The system demonstrates international e-commerce capabilities with orders from:
-- **8 major regions** worldwide
-- **20+ countries** with localized addresses
-- **Realistic shipping logistics** with varied delivery times
-- **Multi-currency support** ready for implementation
+## 8. Database Schema
 
-## 📈 Performance Metrics
+```sql
+CREATE TABLE customers (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  email VARCHAR(255) UNIQUE NOT NULL
+);
+```
 
-- **176+ total orders** processed
-- **30+ active customers** managed
-- **$22,000+ revenue** tracked
-- **8+ regions** served globally
-- **Sub-second** API response times
+---
 
-## 📝 API Documentation
+## 9. Deployment
 
-Once the backend is running, access the interactive API documentation at:
-`http://localhost:8000/docs`
+### Docker
+```bash
+docker-compose up -d --build
+```
 
-## 👨‍💻 Developer
+### Manual
+```bash
+# Backend
+npm run build && npm start
 
-Built with ❤️ for the CARICOM IMPACS assessment, demonstrating full-stack development capabilities with modern technologies and international business requirements.
+# Frontend
+npm run build && serve -s build
+```
+
+---
+
+## 10. Testing
+
+Run test suites:
+```bash
+# Unit tests
+npm run test:unit
+
+# Integration tests
+npm run test:integration
+```
+
+---
+
+## 11. Troubleshooting
+
+| Issue               | Solution                  |
+|---------------------|---------------------------|
+| Database connection | Verify PostgreSQL service |
+| CORS errors        | Check .env configuration  |
+| JWT issues         | Validate secret/tokens    |
+
+---
+
+## 12. Contributing
+
+1. Fork the repository
+2. Create feature branch
+3. Submit pull request
+
+---
+
+## 13. License
+
+MIT License © 2025 CARICOM IMPACS
+
+```

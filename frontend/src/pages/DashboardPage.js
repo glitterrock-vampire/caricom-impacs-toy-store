@@ -1,6 +1,26 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useNavigate, Link as RouterLink, useLocation } from 'react-router-dom';
+import { isAuthenticated, getToken } from '../services/authService';
+import { Link } from '@mui/material';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  MenuItem,
+  Select
+} from '@mui/material';
+import {
+  KeyboardArrowLeft,
+  KeyboardArrowRight,
+  FileDownload as FileDownloadIcon
+} from '@mui/icons-material';
 import {
   Alert,
+  Avatar,
   Box,
   Button,
   Card,
@@ -17,13 +37,17 @@ import {
   Divider,
   Grid,
   IconButton,
-  Snackbar,
+  LinearProgress,
+  List,
+  ListItem,
+  ListItemAvatar,
+  ListItemText,
   ToggleButton,
   ToggleButtonGroup,
   Tooltip,
   Typography,
   useTheme,
-  Paper
+  Snackbar
 } from '@mui/material';
 import {
   Assessment as DashboardIcon,
@@ -37,23 +61,33 @@ import {
   LocationOn as LocationIcon,
   Visibility as VisibilityIcon,
   TrendingUp as TrendingUpIcon,
-  Info as InfoIcon
+  Info as InfoIcon,
+  AttachMoney as MoneyIcon,
+  Inventory as InventoryIcon,
+  Notifications as NotificationsIcon,
+  EventAvailable as EventIcon,
+  PersonAdd as PersonAddIcon,
+  AddShoppingCart as AddCartIcon,
+  AssessmentOutlined as AnalyticsIcon,
+  Timeline as TimelineIcon,
+  BarChart as BarChartIcon,
+  PieChart as PieChartIcon,
+  Map as MapIcon,
+  Email as EmailIcon
 } from '@mui/icons-material';
-import { DataGrid, GridToolbar } from '@mui/x-data-grid';
-import { Bar, Pie, Line } from 'react-chartjs-2';
+
+import { Line, Pie } from 'react-chartjs-2';
 import { ComposableMap, Geographies, Geography, Marker } from 'react-simple-maps';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
-import { format, subDays, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
-import { faker } from '@faker-js/faker';
+import { format } from 'date-fns';
 import api from '../services/api';
 
-// Chart.js setup with all required components
+// Chart.js setup
 import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
-  BarElement,
   Title,
   Tooltip as ChartTooltip,
   Legend,
@@ -67,7 +101,6 @@ import {
 ChartJS.register(
   CategoryScale,
   LinearScale,
-  BarElement,
   Title,
   ChartTooltip,
   Legend,
@@ -80,67 +113,254 @@ ChartJS.register(
 // World map URL
 const geoUrl = 'https://raw.githubusercontent.com/zcreativelabs/react-simple-maps/master/topojson-maps/world-110m.json';
 
+// Recent activities from orders endpoint
+const getRecentActivities = (orders) => {
+  return orders.slice(0, 5).map((order, index) => ({
+    id: order.id,
+    type: 'order',
+    user: order.customer?.name || 'Unknown',
+    action: `placed order #${order.id}`,
+    time: format(new Date(order.orderDate), 'MMM d, yyyy HH:mm'),
+    icon: <ShoppingCartIcon color="primary" />
+  }));
+};
+
 const DashboardPage = () => {
-  // State management
+  const theme = useTheme();
+  const navigate = useNavigate();
+  
+  // State management aligned with backend response structure
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [stats, setStats] = useState({
     totalCustomers: 0,
-    ordersThisWeek: Array(7).fill(0),
-    categoryDistribution: {},
-    customerLocations: []
+    totalOrders: 0,
+    totalRevenue: 0,
+    totalProducts: 0,
+    orderGrowth: 0,
+    monthlyOrders: [],
+    recentOrders: [],
+    statusBreakdown: {}
   });
   const [customers, setCustomers] = useState([]);
   const [selectedCustomers, setSelectedCustomers] = useState([]);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [snackbar, setSnackbar] = useState({ open: false, message: '' });
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [timeRange, setTimeRange] = useState('week');
   const [autoRefresh, setAutoRefresh] = useState(true);
 
-  // Fetch dashboard data
+  const location = useLocation();
+  const [initialAuthCheck, setInitialAuthCheck] = useState(false);
+
+  // Check authentication status on mount and location change
+  useEffect(() => {
+    if (!isAuthenticated()) {
+      navigate('/login', { 
+        state: { from: location },
+        replace: true 
+      });
+    } else {
+      setInitialAuthCheck(true);
+    }
+  }, [location, navigate]);
+
+  // Fetch dashboard data using actual backend endpoints
   const fetchDashboardData = useCallback(async () => {
+    if (!isAuthenticated()) {
+      return;
+    }
+
     try {
       setLoading(true);
-      const [statsRes, customersRes] = await Promise.all([
-        api.get('/api/dashboard/stats'),
-        api.get('/api/customers')
-      ]);
       
-      // Ensure we have valid data before setting state
-      if (statsRes?.data) {
+      // Add a timeout to prevent hanging
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      
+      // Get auth token for authenticated requests
+      const token = localStorage.getItem('auth_token');
+
+      try {
+        // Fetch dashboard stats and customer data in parallel with authentication
+        const [statsRes, customersRes, analyticsRes] = await Promise.all([
+          api.get('/api/dashboard/stats', { 
+            signal: controller.signal,
+            headers: { 'Authorization': `Bearer ${token}` }
+          }).catch(err => {
+            console.error('Error fetching stats:', err);
+            if (err.response?.status === 401) {
+              // Handle unauthorized
+              localStorage.removeItem('auth_token');
+              navigate('/login');
+              setSnackbar({
+                open: true,
+                message: 'Session expired. Please log in again.',
+                severity: 'warning'
+              });
+            }
+            return { data: {} }; // Return empty data on error
+          }),
+          api.get('/api/customers?limit=100', { 
+            signal: controller.signal,
+            headers: { 'Authorization': `Bearer ${token}` }
+          }).catch(err => {
+            console.error('Error fetching customers:', err);
+            return { data: { customers: [] } }; // Return empty array on error
+          }),
+          // Use the main orders endpoint with sorting and limiting
+          api.get('/api/orders', {
+            signal: controller.signal,
+            headers: { 'Authorization': `Bearer ${token}` },
+            params: { 
+              _sort: 'createdAt',
+              _order: 'desc',
+              _limit: 10,
+              _expand: 'customer'
+            }
+          }).then(res => {
+            const orders = Array.isArray(res.data) 
+              ? res.data 
+              : (res.data?.orders || []);
+            return { data: { orders } };
+          }).catch(err => {
+            console.error('Error fetching recent orders:', err);
+            return { data: { orders: [] } }; // Return empty array on error
+          })
+        ]);
+
+        clearTimeout(timeoutId);
+
+        const statsData = statsRes.data || {};
+        const customersData = customersRes.data?.customers || [];
+        const analyticsData = analyticsRes.data || {};
+        
+        // Process customer data
+        const processedCustomers = customersData.map(customer => ({
+          id: customer.id,
+          name: customer.name || 'Unknown',
+          email: customer.email || 'No email',
+          phone: customer.phone || 'No phone',
+          country: customer.country || 'Unknown',
+          orderCount: customer.orders?.length || 0,
+          lastOrder: customer.orders?.[0]?.orderDate 
+            ? format(new Date(customer.orders[0].orderDate), 'MMM d, yyyy') 
+            : 'No orders',
+          status: customer.status || 'active',
+          createdAt: customer.createdAt ? format(new Date(customer.createdAt), 'MMM d, yyyy') : 'N/A'
+        }));
+
+        // Process recent orders from the API response
+        const recentOrders = (analyticsRes.data?.orders || []).map(order => {
+          // Debug log to see the raw order data
+          console.log('Processing order:', order);
+          
+          // Safely get customer info
+          let customerInfo = { name: 'Guest', id: null };
+          if (order.customer) {
+            customerInfo = {
+              name: order.customer.name || 'Guest',
+              id: order.customer.id
+            };
+          } else if (order.customerName || order.customerId) {
+            customerInfo = {
+              name: order.customerName || 'Guest',
+              id: order.customerId
+            };
+          }
+          
+          // Format the order date
+          let orderDate = order.orderDate || order.createdAt || new Date().toISOString();
+          
+          return {
+            id: order.id,
+            orderNumber: order.orderNumber || `#${String(order.id).padStart(5, '0')}`,
+            orderDate: orderDate,
+            customer: customerInfo,
+            total: order.totalAmount || order.total || 0,
+            status: (order.status || 'pending').toLowerCase(),
+            items: order.items?.length || order.orderItems?.length || 0
+          };
+        });
+
+        // Process status breakdown
+        const statusBreakdown = {
+          pending: 0,
+          processing: 0,
+          shipped: 0,
+          delivered: 0,
+          cancelled: 0,
+          ...(analyticsData.statusBreakdown || {})
+        };
+
+        // Update state with the fetched data
         setStats({
-          totalCustomers: statsRes.data.totalCustomers || 0,
-          ordersThisWeek: Array.isArray(statsRes.data.ordersThisWeek) ? statsRes.data.ordersThisWeek : Array(7).fill(0),
-          categoryDistribution: statsRes.data.categoryDistribution || {},
-          customerLocations: Array.isArray(statsRes.data.customerLocations) ? statsRes.data.customerLocations : []
+          totalCustomers: statsData.totalCustomers || 0,
+          totalOrders: statsData.totalOrders || 0,
+          totalRevenue: statsData.totalRevenue || 0,
+          totalProducts: statsData.totalProducts || 0,
+          orderGrowth: statsData.orderGrowth || 0,
+          monthlyOrders: statsData.monthlyOrders || [],
+          recentOrders: recentOrders,
+          statusBreakdown: statusBreakdown
+        });
+
+        setCustomers(processedCustomers);
+        setError(null);
+
+        // Show success message if this is the initial load
+        if (loading) {
+          setSnackbar({ 
+            open: true, 
+            message: 'Dashboard data loaded successfully', 
+            severity: 'success' 
+          });
+        }
+      } catch (err) {
+        console.error('Error in fetchDashboardData:', err);
+        setError('Failed to load dashboard data');
+        setSnackbar({ 
+          open: true, 
+          message: err.response?.data?.message || 'Failed to load dashboard data', 
+          severity: 'error' 
         });
       }
-      
-      if (customersRes?.data) {
-        setCustomers(Array.isArray(customersRes.data) ? customersRes.data : []);
-      }
-      
-      setError(null);
     } catch (err) {
-      console.error('Error fetching dashboard data:', err);
-      setError('Failed to load dashboard data. Please try again.');
-      setSnackbar({ open: true, message: 'Error loading dashboard data' });
+      console.error('Unexpected error in fetchDashboardData:', err);
+      setError('An unexpected error occurred');
+      setSnackbar({
+        open: true,
+        message: 'An unexpected error occurred while loading data',
+        severity: 'error'
+      });
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loading, navigate]);
 
   // Auto-refresh effect
   useEffect(() => {
-    fetchDashboardData();
+    if (!initialAuthCheck || !isAuthenticated()) return;
     
+    // Initial fetch
+    fetchDashboardData().catch(console.error);
+    
+    // Set up auto-refresh if enabled
     let interval;
     if (autoRefresh) {
-      interval = setInterval(fetchDashboardData, 30000); // 30 seconds
+      interval = setInterval(() => {
+        if (isAuthenticated()) {
+          fetchDashboardData().catch(console.error);
+        } else {
+          clearInterval(interval);
+        }
+      }, 30000);
     }
     
-    return () => clearInterval(interval);
-  }, [autoRefresh, fetchDashboardData]);
+    // Cleanup
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [autoRefresh, fetchDashboardData, initialAuthCheck]);
 
   // Handle customer selection
   const handleSelectionChange = (newSelection) => {
@@ -156,12 +376,13 @@ const DashboardPage = () => {
         )
       );
       
-      setSnackbar({ open: true, message: 'Selected customers deleted successfully' });
+      setSnackbar({ open: true, message: 'Selected customers deleted successfully', severity: 'success' });
       setDeleteDialogOpen(false);
+      setSelectedCustomers([]);
       fetchDashboardData();
     } catch (err) {
       console.error('Error deleting customers:', err);
-      setSnackbar({ open: true, message: 'Error deleting customers' });
+      setSnackbar({ open: true, message: 'Error deleting customers', severity: 'error' });
     }
   };
 
@@ -169,14 +390,12 @@ const DashboardPage = () => {
   const exportToPdf = () => {
     const doc = new jsPDF();
     
-    // Title
     doc.setFontSize(20);
     doc.text('Customer Report', 14, 22);
     doc.setFontSize(12);
     doc.setTextColor(100);
     doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 30);
     
-    // Customer data table
     doc.autoTable({
       head: [['ID', 'Name', 'Email', 'Country', 'Total Orders']],
       body: customers.map(customer => [
@@ -184,125 +403,353 @@ const DashboardPage = () => {
         customer.name,
         customer.email,
         customer.country,
-        customer.orderCount || 0
+        customer.orderCount
       ]),
       startY: 40,
       styles: { fontSize: 10 },
       headStyles: { fillColor: [63, 81, 181] }
     });
     
-    // Save the PDF
-    doc.save(`customer-report-${new Date().toISOString().split('T')[0]}.pdf`);
+    doc.save(`customer-report-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
   };
 
-  // Chart data preparation with null checks
-  const weeklyOrdersData = {
-    labels: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
-    datasets: [
-      {
-        label: 'Orders',
-        data: Array.isArray(stats?.ordersThisWeek) ? stats.ordersThisWeek : Array(7).fill(0),
-        backgroundColor: 'rgba(54, 162, 235, 0.6)',
-        borderColor: 'rgba(54, 162, 235, 1)',
-        borderWidth: 1,
+  // Chart configurations
+  const chartConfigurations = useMemo(() => ({
+    lineChartOptions: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom' },
+        tooltip: { mode: 'index', intersect: false },
       },
-    ],
-  };
+      scales: {
+        y: { beginAtZero: true, grid: { drawBorder: false }, ticks: { precision: 0 } },
+        x: { grid: { display: false } }
+      }
+    },
+    pieChartOptions: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom' } }
+    }
+  }), []);
 
-  // Prepare category distribution data
-  const categoryDistribution = stats?.categoryDistribution || {};
-  const categoryData = {
-    labels: Object.keys(categoryDistribution),
-    datasets: [
-      {
-        data: Object.values(categoryDistribution),
-        backgroundColor: [
-          'rgba(255, 99, 132, 0.6)',
-          'rgba(54, 162, 235, 0.6)',
-          'rgba(255, 206, 86, 0.6)',
-          'rgba(75, 192, 192, 0.6)',
-          'rgba(153, 102, 255, 0.6)',
-        ],
-        borderColor: [
-          'rgba(255, 99, 132, 1)',
-          'rgba(54, 162, 235, 1)',
-          'rgba(255, 206, 86, 1)',
-          'rgba(75, 192, 192, 1)',
-          'rgba(153, 102, 255, 1)',
-        ],
-        borderWidth: 1,
-      },
-    ],
-  };
-
-  // DataGrid columns
-  const columns = [
-    { field: 'id', headerName: 'ID', width: 70 },
-    { field: 'name', headerName: 'Name', width: 200 },
-    { field: 'email', headerName: 'Email', width: 250 },
-    { field: 'country', headerName: 'Country', width: 150 },
-    { field: 'orderCount', headerName: 'Orders', width: 100 },
+  // KPI Cards aligned with backend data
+  const kpiCards = useMemo(() => [
     {
-      field: 'actions',
-      headerName: 'Actions',
-      width: 120,
-      sortable: false,
-      renderCell: (params) => (
+      title: 'Total Revenue',
+      value: `$${stats.totalRevenue.toLocaleString()}`,
+      change: stats.orderGrowth, // Using orderGrowth from backend
+      icon: <MoneyIcon fontSize="large" color="primary" />,
+      color: theme.palette.primary.main
+    },
+    {
+      title: 'Total Orders',
+      value: stats.totalOrders.toLocaleString(),
+      change: stats.orderGrowth,
+      icon: <ShoppingCartIcon fontSize="large" color="secondary" />,
+      color: theme.palette.secondary.main
+    },
+    {
+      title: 'Total Customers',
+      value: stats.totalCustomers.toLocaleString(),
+      change: stats.orderGrowth,
+      icon: <PeopleIcon fontSize="large" color="success" />,
+      color: theme.palette.success.main
+    },
+    {
+      title: 'Products in Stock',
+      value: stats.totalProducts.toLocaleString(),
+      change: 0, // No growth data available for products
+      icon: <InventoryIcon fontSize="large" color="warning" />,
+      color: theme.palette.warning.main
+    }
+  ], [stats, theme]);
+
+  // Quick Actions
+  const quickActions = [
+    { label: 'New Order', icon: <AddCartIcon />, color: 'primary' },
+    { label: 'Add Customer', icon: <PersonAddIcon />, color: 'secondary' },
+    { label: 'View Reports', icon: <AnalyticsIcon />, color: 'info' },
+    { label: 'Send Email', icon: <EmailIcon />, color: 'success' }
+  ];
+
+  // Chart data using backend monthlyOrders
+  const chartData = useMemo(() => ({
+    weeklyOrders: {
+      labels: stats.monthlyOrders.map(item => item.month),
+      datasets: [
+        {
+          label: 'Orders',
+          data: stats.monthlyOrders.map(item => item.count),
+          backgroundColor: 'rgba(63, 81, 181, 0.2)',
+          borderColor: theme.palette.primary.main,
+          borderWidth: 2,
+          tension: 0.3,
+          fill: true
+        }
+      ]
+    },
+    categoryDistribution: {
+      labels: Object.keys(stats.statusBreakdown),
+      datasets: [
+        {
+          data: Object.values(stats.statusBreakdown),
+          backgroundColor: [
+            theme.palette.primary.main,
+            theme.palette.secondary.main,
+            theme.palette.success.main,
+            theme.palette.warning.main,
+            theme.palette.error.main
+          ],
+          borderWidth: 1
+        }
+      ]
+    }
+  }), [stats, theme]);
+
+  // Customer table columns configuration
+  const customerTableColumns = [
+    { id: 'id', label: 'ID', minWidth: 70 },
+    { id: 'name', label: 'Name', minWidth: 150 },
+    { id: 'email', label: 'Email', minWidth: 200 },
+    { id: 'country', label: 'Country', minWidth: 120 },
+    { id: 'orderCount', label: 'Orders', minWidth: 80, align: 'right' },
+    { 
+      id: 'status', 
+      label: 'Status', 
+      minWidth: 100,
+      format: (value) => (
+        <Chip 
+          label={value || 'active'}
+          color={value === 'active' ? 'success' : 'default'}
+          size="small"
+        />
+      )
+    },
+    { 
+      id: 'actions', 
+      label: 'Actions', 
+      minWidth: 100, 
+      align: 'right',
+      format: (value, row) => (
         <IconButton
           size="small"
-          onClick={() => {
-            setSelectedCustomers([params.id]);
+          onClick={(e) => {
+            e.stopPropagation();
+            setSelectedCustomers([row.id]);
             setDeleteDialogOpen(true);
           }}
         >
           <DeleteIcon fontSize="small" color="error" />
         </IconButton>
-      ),
-    },
+      )
+    }
   ];
 
-  // Chart options
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        position: 'top',
-      },
+  // Order table columns configuration with proper formatting and navigation
+  const orderTableColumns = useMemo(() => [
+    { 
+      id: 'orderNumber', 
+      label: 'Order #', 
+      minWidth: 120,
+      format: (value, row) => (
+        <Link component={RouterLink} to={`/orders/${row.id}`} color="primary">
+          {value}
+        </Link>
+      )
     },
-    scales: {
-      y: {
-        beginAtZero: true,
-        ticks: {
-          precision: 0
+    { 
+      id: 'customer', 
+      label: 'Customer', 
+      minWidth: 200,
+      format: (value) => value?.name || 'Guest'
+    },
+    { 
+      id: 'orderDate', 
+      label: 'Date', 
+      minWidth: 150,
+      format: (value) => {
+        if (!value) return 'N/A';
+        try {
+          return format(new Date(value), 'MMM d, yyyy');
+        } catch (error) {
+          console.error('Error formatting date:', error);
+          return 'Invalid Date';
         }
-      },
+      }
     },
+    { 
+      id: 'status', 
+      label: 'Status', 
+      minWidth: 120,
+      format: (value) => (
+        <Chip
+          label={value || 'pending'}
+          size="small"
+          color={
+            value === 'completed' ? 'success' :
+            value === 'processing' ? 'primary' :
+            value === 'pending' ? 'warning' :
+            'default'
+          }
+          variant="outlined"
+        />
+      )
+    },
+    { 
+      id: 'total', 
+      label: 'Total', 
+      minWidth: 120, 
+      align: 'right',
+      format: (value) => {
+        if (value === undefined || value === null) return '$0.00';
+        const amount = Number(value);
+        return isNaN(amount) ? '$0.00' : `$${amount.toFixed(2)}`;
+      }
+    },
+    { 
+      id: 'actions', 
+      label: 'Actions', 
+      minWidth: 100, 
+      align: 'right',
+      format: (value, row) => (
+        <IconButton
+          size="small"
+          onClick={(e) => {
+            e.stopPropagation();
+            // Handle view order details
+            navigate(`/orders/${row.id}`);
+          }}
+        >
+          <VisibilityIcon fontSize="small" color="primary" />
+        </IconButton>
+      )
+    }
+  ], [navigate]);
+
+  // Make sure orderTableColumns is available in the component scope
+  const columns = orderTableColumns;
+
+  // Render Recent Activity Item
+  const renderActivityItem = (activity) => {
+    return (
+      <ListItem key={activity.id} alignItems="flex-start" sx={{ px: 0 }}>
+        <ListItemAvatar>
+          <Avatar sx={{ bgcolor: 'background.default' }}>
+            {activity.icon}
+          </Avatar>
+        </ListItemAvatar>
+        <ListItemText
+          primary={
+            <React.Fragment>
+              <Typography component="span" variant="subtitle2">
+                {activity.user}{' '}
+              </Typography>
+              <Typography component="span" variant="body2" color="textSecondary">
+                {activity.action}
+              </Typography>
+            </React.Fragment>
+          }
+          secondary={
+            <Typography variant="caption" color="textSecondary">
+              {activity.time}
+            </Typography>
+          }
+        />
+      </ListItem>
+    );
   };
 
-  // Summary cards data
-  const summaryCards = [
-    {
-      title: 'Total Customers',
-      value: stats?.totalCustomers || 0,
-      icon: <DashboardIcon color="primary" />,
-      color: 'primary',
-    },
-    {
-      title: 'Orders This Week',
-      value: Array.isArray(stats?.ordersThisWeek) ? 
-        stats.ordersThisWeek.reduce((a, b) => a + b, 0) : 0,
-      icon: <ShoppingCartIcon color="secondary" />,
-      color: 'secondary',
-    },
-    {
-      title: 'Categories',
-      value: stats?.categoryDistribution ? 
-        Object.keys(stats.categoryDistribution).length : 0,
-      icon: <CategoryIcon color="success" />,
-      color: 'success',
-    },
-  ];
+  // Render KPI Card
+  const renderKpiCard = (card) => (
+    <Card 
+      key={card.title}
+      sx={{ 
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        transition: 'transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out',
+        '&:hover': {
+          transform: 'translateY(-5px)',
+          boxShadow: theme.shadows[8]
+        }
+      }}
+    >
+      <CardContent>
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+          <Box>
+            <Typography variant="subtitle2" color="textSecondary" gutterBottom>
+              {card.title}
+            </Typography>
+            <Typography variant="h5" component="div" fontWeight="bold">
+              {card.value}
+            </Typography>
+          </Box>
+          <Box
+            sx={{
+              backgroundColor: `${card.color}20`,
+              borderRadius: '50%',
+              width: 48,
+              height: 48,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            {card.icon}
+          </Box>
+        </Box>
+        <Box display="flex" alignItems="center">
+          <TrendingUpIcon 
+            color={card.change >= 0 ? 'success' : 'error'} 
+            fontSize="small" 
+            sx={{ mr: 0.5 }}
+          />
+          <Typography 
+            variant="caption" 
+            color={card.change >= 0 ? 'success.main' : 'error.main'}
+            fontWeight="medium"
+          >
+            {card.change >= 0 ? '+' : ''}{card.change}% vs last period
+          </Typography>
+        </Box>
+      </CardContent>
+    </Card>
+  );
+
+  // Render Quick Action Button
+  const renderQuickAction = (action) => (
+    <Button
+      key={action.label}
+      variant="outlined"
+      size="small"
+      startIcon={action.icon}
+      sx={{
+        flex: 1,
+        minWidth: '120px',
+        m: 0.5,
+        py: 1,
+        borderColor: `${action.color}.light`,
+        color: `${action.color}.dark`,
+        '&:hover': {
+          backgroundColor: `${action.color}.light`,
+          borderColor: `${action.color}.main`
+        }
+      }}
+    >
+      {action.label}
+    </Button>
+  );
+
+  // Show loading state while checking auth
+  if (!initialAuthCheck) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="80vh">
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   if (loading) {
     return (
@@ -314,221 +761,483 @@ const DashboardPage = () => {
 
   if (error) {
     return (
-      <Container maxWidth="md" sx={{ mt: 4 }}>
-        <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>
-        <Button
-          variant="contained"
-          color="primary"
-          startIcon={<RefreshIcon />}
-          onClick={fetchDashboardData}
+      <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
+        <Alert 
+          severity="error" 
+          action={
+            <Button 
+              color="inherit" 
+              size="small" 
+              onClick={fetchDashboardData}
+              startIcon={<RefreshIcon />}
+            >
+              Retry
+            </Button>
+          }
+          sx={{ mb: 3 }}
         >
-          Retry
-        </Button>
+          {error}
+        </Alert>
       </Container>
     );
   }
 
   return (
-    <Container maxWidth="xl">
+    <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
       {/* Header */}
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Box display="flex" alignItems="center">
-          <DashboardIcon sx={{ mr: 1, fontSize: 30 }} color="primary" />
-          <Typography variant="h4" component="h1">
-            Dashboard
+        <Box>
+          <Typography variant="h4" component="h1" fontWeight="bold" gutterBottom>
+            Dashboard Overview
+          </Typography>
+          <Typography variant="body2" color="textSecondary">
+            Welcome back! Here's what's happening with your store today.
           </Typography>
         </Box>
-        <Box>
-          <ToggleButtonGroup
-            value={timeRange}
-            exclusive
-            onChange={(e, newRange) => setTimeRange(newRange)}
-            size="small"
-            sx={{ mr: 2 }}
-          >
-            <ToggleButton value="week">This Week</ToggleButton>
-            <ToggleButton value="month">This Month</ToggleButton>
-          </ToggleButtonGroup>
+        <Box display="flex" alignItems="center" gap={2}>
           <Button
             variant="outlined"
+            size="small"
             startIcon={<RefreshIcon />}
             onClick={fetchDashboardData}
-            sx={{ mr: 2 }}
+            disabled={loading}
           >
             Refresh
           </Button>
-          <ToggleButton
-            value="auto"
-            selected={autoRefresh}
-            onChange={() => setAutoRefresh(!autoRefresh)}
+          <Button
+            variant="contained"
+            color="primary"
             size="small"
-            sx={{ mr: 2 }}
+            startIcon={<PdfIcon />}
+            onClick={exportToPdf}
           >
-            Auto-refresh {autoRefresh ? 'ON' : 'OFF'}
-          </ToggleButton>
+            Export
+          </Button>
         </Box>
       </Box>
 
-      {/* Summary Cards */}
-      <Grid container spacing={3}>
-        {summaryCards.map((card, index) => (
-          <Grid item xs={12} md={4} key={index}>
-            <Card>
-              <CardContent>
-                <Box display="flex" justifyContent="space-between" alignItems="center">
-                  <div>
-                    <Typography color="textSecondary" gutterBottom>
-                      {card.title}
-                    </Typography>
-                    <Typography variant="h4">{card.value}</Typography>
-                  </div>
-                  <Box
-                    sx={{
-                      backgroundColor: `${card.color}.light`,
-                      borderRadius: '50%',
-                      width: 56,
-                      height: 56,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    {React.cloneElement(card.icon, { sx: { fontSize: 30 } })}
-                  </Box>
-                </Box>
-              </CardContent>
-            </Card>
+      {/* KPI Cards */}
+      <Grid container spacing={3} sx={{ mb: 3 }}>
+        {kpiCards.map(card => (
+          <Grid key={card.title} item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>
+            {renderKpiCard(card)}
           </Grid>
         ))}
       </Grid>
 
+      {/* Quick Actions */}
+      <Card sx={{ mb: 3, p: 1 }}>
+        <Box display="flex" flexWrap="wrap" justifyContent="space-between" alignItems="center">
+          <Box sx={{ display: 'flex', alignItems: 'center', p: 1 }}>
+            <TimelineIcon color="action" sx={{ mr: 1 }} />
+            <Typography variant="subtitle2" color="textSecondary">
+              Quick Actions
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+            {quickActions.map(action => renderQuickAction(action))}
+          </Box>
+        </Box>
+      </Card>
+
       {/* Charts Row */}
-      <Grid container spacing={3} sx={{ mt: 2 }}>
-        {/* Orders Chart */}
-        <Grid item xs={12} md={6}>
-          <Card sx={{ height: 400 }}>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>Weekly Orders</Typography>
-              <Box sx={{ height: 300 }}>
-                <Bar data={weeklyOrdersData} options={chartOptions} />
+      <Grid container spacing={3} sx={{ mb: 3 }}>
+        <Grid item xs={12} md={8}>
+          <Card sx={{ height: '100%', p: 2 }}>
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+              <Box display="flex" alignItems="center">
+                <BarChartIcon color="primary" sx={{ mr: 1 }} />
+                <Typography variant="h6">Monthly Orders</Typography>
               </Box>
-            </CardContent>
+              <ToggleButtonGroup
+                value={timeRange}
+                exclusive
+                onChange={(e, newRange) => setTimeRange(newRange)}
+                size="small"
+              >
+                <ToggleButton value="week">Week</ToggleButton>
+                <ToggleButton value="month">Month</ToggleButton>
+              </ToggleButtonGroup>
+            </Box>
+            <Box sx={{ height: 300, position: 'relative' }}>
+              <Line data={chartData.weeklyOrders} options={chartConfigurations.lineChartOptions} />
+            </Box>
           </Card>
         </Grid>
 
-        {/* Category Distribution */}
-        <Grid item xs={12} md={6}>
-          <Card sx={{ height: 400 }}>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>Category Distribution</Typography>
-              <Box sx={{ height: 300 }}>
-                <Pie data={categoryData} options={chartOptions} />
-              </Box>
-            </CardContent>
+        <Grid item xs={12} md={4}>
+          <Card sx={{ height: '100%', p: 2 }}>
+            <Box display="flex" alignItems="center" mb={2}>
+              <PieChartIcon color="primary" sx={{ mr: 1 }} />
+              <Typography variant="h6">Order Status</Typography>
+            </Box>
+            <Box sx={{ height: 300, position: 'relative' }}>
+              <Pie data={chartData.categoryDistribution} options={chartConfigurations.pieChartOptions} />
+            </Box>
           </Card>
         </Grid>
       </Grid>
 
-      {/* World Map */}
-      <Grid container spacing={3} mb={4}>
-        <Grid item xs={12}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Customer Locations
-              </Typography>
-              <Box height={500} position="relative">
-                <ComposableMap
-                  projectionConfig={{ scale: 150 }}
-                  style={{ width: '100%', height: '100%' }}
+      {/* Recent Activities and Recent Orders */}
+      <Grid container spacing={3} sx={{ mb: 3 }}>
+        <Grid item xs={12} md={6}>
+          <Card sx={{ height: '100%' }}>
+            <CardHeader
+              title="Recent Activities"
+              titleTypographyProps={{ variant: 'h6' }}
+              avatar={<NotificationsIcon color="primary" />}
+              action={
+                <IconButton size="small" onClick={fetchDashboardData}>
+                  <RefreshIcon fontSize="small" />
+                </IconButton>
+              }
+            />
+            <Divider />
+            <List sx={{ p: 0 }}>
+              {getRecentActivities(stats.recentOrders).map(activity => renderActivityItem(activity))}
+            </List>
+            <Box textAlign="center" p={1}>
+              <Button size="small" color="primary">View All Activities</Button>
+            </Box>
+          </Card>
+        </Grid>
+
+        <Grid xs={12} md={6}>
+          <Card sx={{ height: '100%' }}>
+            <CardHeader
+              title="Recent Orders"
+              titleTypographyProps={{ variant: 'h6' }}
+              avatar={<ShoppingCartIcon color="primary" />}
+              action={
+                <Box display="flex" alignItems="center">
+                  <ToggleButton
+                    value="auto"
+                    selected={autoRefresh}
+                    onChange={() => setAutoRefresh(!autoRefresh)}
+                    size="small"
+                    sx={{ mr: 1 }}
+                  >
+                    Auto-refresh {autoRefresh ? 'ON' : 'OFF'}
+                  </ToggleButton>
+                  <Button size="small" color="primary" startIcon={<RefreshIcon />} onClick={fetchDashboardData}>
+                    Refresh
+                  </Button>
+                </Box>
+              }
+            />
+            <Divider />
+            <Box sx={{ width: '100%' }}>
+              <Paper sx={{ width: '100%', mb: 2 }}>
+                <TableContainer>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        {columns.map((column) => (
+                          <TableCell key={column.id}>
+                            {column.label || column.id}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {loading ? (
+                        <TableRow>
+                          <TableCell colSpan={columns.length} align="center" sx={{ py: 4 }}>
+                            <CircularProgress />
+                          </TableCell>
+                        </TableRow>
+                      ) : (!Array.isArray(stats?.recentOrders) || stats.recentOrders.length === 0) ? (
+                        <TableRow>
+                          <TableCell colSpan={columns.length} align="center" sx={{ py: 4 }}>
+                            <Typography variant="body1" color="text.secondary">
+                              {!stats?.recentOrders ? 'Failed to load orders' : 'No recent orders found'}
+                            </Typography>
+                            {!stats?.recentOrders && (
+                              <Button 
+                                variant="outlined" 
+                                size="small" 
+                                onClick={fetchDashboardData}
+                                sx={{ mt: 1 }}
+                              >
+                                Retry
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        stats.recentOrders.map((row, index) => {
+                          if (!row || typeof row !== 'object') {
+                            console.error('Invalid row data:', row);
+                            return null;
+                          }
+                          
+                          const rowKey = row.id || `row-${index}`;
+                          
+                          return (
+                            <TableRow 
+                              key={rowKey}
+                              hover 
+                              sx={{ 
+                                cursor: 'pointer',
+                                '&:hover': { backgroundColor: 'action.hover' }
+                              }}
+                              onClick={(event) => {
+                                if (!event.target.closest('button') && 
+                                    event.target.type !== 'checkbox' && 
+                                    row.id) {
+                                  navigate(`/orders/${row.id}`);
+                                }
+                              }}
+                            >
+                              {columns.map((column) => {
+                                const cellKey = `${rowKey}-${column.id}`;
+                                let cellContent = '';
+                                
+                                try {
+                                  const value = column.id in row ? row[column.id] : '';
+                                  cellContent = column.format 
+                                    ? column.format(value, row)
+                                    : (value ?? '');
+                                } catch (error) {
+                                  console.error(`Error rendering cell ${column.id}:`, error);
+                                  cellContent = 'Error';
+                                }
+                                
+                                return (
+                                  <TableCell key={cellKey}>
+                                    {cellContent}
+                                  </TableCell>
+                                );
+                              })}
+                            </TableRow>
+                          );
+                        })
+                      )}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+                <Box display="flex" justifyContent="space-between" alignItems="center" p={2}>
+                  <Box>
+                    <Button 
+                      variant="outlined" 
+                      size="small"
+                      startIcon={<FileDownloadIcon />}
+                      onClick={() => {
+                        // Export functionality would go here
+                        console.log('Export data');
+                      }}
+                    >
+                      Export
+                    </Button>
+                  </Box>
+                  <Box display="flex" alignItems="center">
+                    <Typography variant="body2" color="text.secondary" sx={{ mr: 2 }}>
+                      Rows per page:
+                    </Typography>
+                    <Select
+                      size="small"
+                      value={5}
+                      onChange={(e) => {
+                        // Handle page size change
+                        console.log('Page size changed to:', e.target.value);
+                      }}
+                      sx={{ minWidth: 80, mr: 2 }}
+                    >
+                      <MenuItem value={5}>5</MenuItem>
+                      <MenuItem value={10}>10</MenuItem>
+                      <MenuItem value={20}>20</MenuItem>
+                    </Select>
+                    <Typography variant="body2" color="text.secondary" sx={{ mx: 2 }}>
+                      Page 1 of 1
+                    </Typography>
+                    <IconButton size="small" disabled={true}>
+                      <KeyboardArrowLeft />
+                    </IconButton>
+                    <IconButton size="small" disabled={true}>
+                      <KeyboardArrowRight />
+                    </IconButton>
+                  </Box>
+                </Box>
+              </Paper>
+            </Box>
+          </Card>
+        </Grid>
+      </Grid>
+
+      {/* Customer Locations Map */}
+      <Card sx={{ mb: 3 }}>
+        <CardHeader
+          title="Customer Locations"
+          titleTypographyProps={{ variant: 'h6' }}
+          avatar={<MapIcon color="primary" />}
+        />
+        <Divider />
+        <Box sx={{ height: 400, width: '100%', p: 2 }}>
+          <ComposableMap
+            projectionConfig={{
+              scale: 150,
+              center: [0, 20]
+            }}
+            style={{ width: '100%', height: '100%' }}
+          >
+            <Geographies geography={geoUrl}>
+              {({ geographies }) =>
+                geographies.map((geo) => (
+                  <Geography
+                    key={geo.rsmKey}
+                    geography={geo}
+                    fill="#EAEAEC"
+                    stroke="#D6D6DA"
+                    style={{
+                      default: { outline: 'none' },
+                      hover: { fill: '#E5E5E5', outline: 'none' },
+                      pressed: { outline: 'none' }
+                    }}
+                  />
+                ))
+              }
+            </Geographies>
+            {stats.customerLocations?.map((location, index) => (
+              <Marker key={index} coordinates={[location.lng, location.lat]}>
+                <circle
+                  cx={0}
+                  cy={0}
+                  r={5}
+                  fill={theme.palette.primary.main}
+                  stroke="#fff"
+                  strokeWidth={1}
+                />
+                <text
+                  textAnchor="middle"
+                  y={-10}
+                  style={{
+                    fontFamily: 'system-ui',
+                    fill: theme.palette.text.primary,
+                    fontSize: 10,
+                    fontWeight: 'bold'
+                  }}
                 >
-                  <Geographies geography={geoUrl}>
-                    {({ geographies }) =>
-                      geographies.map((geo) => (
-                        <Geography
-                          key={geo.rsmKey}
-                          geography={geo}
-                          fill="#EAEAEC"
-                          stroke="#D6D6DA"
-                        />
-                      ))
-                    }
-                  </Geographies>
-                  {Array.isArray(stats?.customerLocations) && stats.customerLocations.map(({ country, count, coordinates }) => (
-                    <Marker key={country} coordinates={coordinates}>
-                      <circle
-                        cx={0}
-                        cy={0}
-                        r={Math.min(5 + Math.sqrt(count) * 2, 15)}
-                        fill="#FF6B6B"
-                        fillOpacity={0.6}
-                        stroke="#FF6B6B"
-                        strokeWidth={1}
-                      />
-                      <text
-                        textAnchor="middle"
-                        y={-10}
-                        style={{
-                          fontFamily: 'system-ui',
-                          fill: '#5D5A6D',
-                          fontSize: 10,
-                          fontWeight: 'bold',
-                        }}
-                      >
-                        {country}
-                      </text>
-                    </Marker>
-                  ))}
-                </ComposableMap>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
+                  {location.count}
+                </text>
+              </Marker>
+            ))}
+          </ComposableMap>
+        </Box>
+      </Card>
 
       {/* Customer Table */}
-      <Grid container spacing={3}>
-        <Grid item xs={12}>
-          <Card>
-            <Box p={2} display="flex" justifyContent="space-between" alignItems="center">
-              <Typography variant="h6">Customers</Typography>
-              <Box>
-                {selectedCustomers.length > 0 && (
-                  <Button
-                    variant="outlined"
-                    color="error"
-                    startIcon={<DeleteIcon />}
-                    onClick={() => setDeleteDialogOpen(true)}
-                    sx={{ mr: 2 }}
-                  >
-                    Delete ({selectedCustomers.length})
-                  </Button>
+      <Card sx={{ mb: 3 }}>
+        <Box p={2} display="flex" justifyContent="space-between" alignItems="center">
+          <Typography variant="h6">Customers</Typography>
+          <Box>
+            {selectedCustomers.length > 0 && (
+              <Button
+                variant="outlined"
+                color="error"
+                startIcon={<DeleteIcon />}
+                onClick={() => setDeleteDialogOpen(true)}
+                sx={{ mr: 2 }}
+              >
+                Delete ({selectedCustomers.length})
+              </Button>
+            )}
+            <Button
+              variant="contained"
+              color="primary"
+              startIcon={<PdfIcon />}
+              onClick={exportToPdf}
+            >
+              Export PDF
+            </Button>
+          </Box>
+        </Box>
+        <Box sx={{ width: '100%' }}>
+          <TableContainer component={Paper}>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>ID</TableCell>
+                  <TableCell>Name</TableCell>
+                  <TableCell>Email</TableCell>
+                  <TableCell>Phone</TableCell>
+                  <TableCell>Orders</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell>Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
+                      <CircularProgress />
+                    </TableCell>
+                  </TableRow>
+                ) : customers.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
+                      <Typography variant="body1" color="text.secondary">
+                        No customers found
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  customers.map((customer) => (
+                    <TableRow 
+                      key={customer.id}
+                      hover
+                      onClick={() => navigate(`/customers/${customer.id}`)}
+                      sx={{ cursor: 'pointer' }}
+                    >
+                      <TableCell>{customer.id}</TableCell>
+                      <TableCell>{customer.name}</TableCell>
+                      <TableCell>{customer.email}</TableCell>
+                      <TableCell>{customer.phone}</TableCell>
+                      <TableCell>{customer.orderCount}</TableCell>
+                      <TableCell>
+                        <Chip 
+                          label={customer.status || 'active'} 
+                          color={customer.status === 'active' ? 'success' : 'default'}
+                          size="small"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <IconButton 
+                          size="small" 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/customers/${customer.id}`);
+                          }}
+                        >
+                          <VisibilityIcon fontSize="small" />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))
                 )}
-                <Button
-                  variant="contained"
-                  color="primary"
-                  startIcon={<PdfIcon />}
-                  onClick={exportToPdf}
-                >
-                  Export PDF
-                </Button>
-              </Box>
-            </Box>
-            <Box sx={{ height: 400, width: '100%' }}>
-              <DataGrid
-                rows={customers}
-                columns={columns}
-                pageSize={10}
-                rowsPerPageOptions={[10, 25, 50]}
-                checkboxSelection
-                onSelectionModelChange={handleSelectionChange}
-                selectionModel={selectedCustomers}
-                disableSelectionOnClick
-              />
-            </Box>
-          </Card>
-        </Grid>
-      </Grid>
+              </TableBody>
+            </Table>
+          </TableContainer>
+          
+          {/* Pagination */}
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', p: 2 }}>
+            <Button 
+              startIcon={<KeyboardArrowLeft />}
+              disabled={true}
+              size="small"
+              sx={{ mr: 1 }}
+            >
+              Previous
+            </Button>
+            <Button 
+              endIcon={<KeyboardArrowRight />}
+              disabled={true}
+              size="small"
+            >
+              Next
+            </Button>
+          </Box>
+        </Box>
+        </Card>
 
       {/* Delete Confirmation Dialog */}
       <Dialog
@@ -554,23 +1263,22 @@ const DashboardPage = () => {
           </Button>
         </DialogActions>
       </Dialog>
-
-      {/* Snackbar for notifications */}
+      
+      {/* Global Snackbar for notifications */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
-        message={snackbar.message}
-        action={
-          <IconButton
-            size="small"
-            color="inherit"
-            onClick={() => setSnackbar({ ...snackbar, open: false })}
-          >
-            <CloseIcon fontSize="small" />
-          </IconButton>
-        }
-      />
+        onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <Alert
+          onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Container>
   );
 };
