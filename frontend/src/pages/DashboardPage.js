@@ -207,24 +207,49 @@ const DashboardPage = () => {
             console.error('Error fetching customers:', err);
             return { data: { customers: [] } }; // Return empty array on error
           }),
-          // Use the main orders endpoint with sorting and limiting
+          // Get recent orders with proper pagination and sorting
           api.get('/api/orders', {
             signal: controller.signal,
             headers: { 'Authorization': `Bearer ${token}` },
-            params: { 
-              _sort: 'createdAt',
-              _order: 'desc',
-              _limit: 10,
-              _expand: 'customer'
+            params: {
+              page: 1,
+              limit: 10,
+              status: '' // Get all statuses
             }
-          }).then(res => {
-            const orders = Array.isArray(res.data) 
-              ? res.data 
-              : (res.data?.orders || []);
-            return { data: { orders } };
-          }).catch(err => {
+          })
+          .then(res => {
+            // Ensure we have a valid response with data
+            if (!res || !res.data) {
+              console.warn('Unexpected response format from /api/orders:', res);
+              return { data: { orders: [] } };
+            }
+            
+            // Check if the response has the expected format
+            if (Array.isArray(res.data.orders)) {
+              return { data: { orders: res.data.orders } };
+            } else if (Array.isArray(res.data)) {
+              // Handle case where orders are directly in data array
+              return { data: { orders: res.data } };
+            } else {
+              console.warn('Unexpected orders data format:', res.data);
+              return { data: { orders: [] } };
+            }
+          })
+          .catch(err => {
             console.error('Error fetching recent orders:', err);
-            return { data: { orders: [] } }; // Return empty array on error
+            if (err.response?.status === 401) {
+              localStorage.removeItem('auth_token');
+              navigate('/login');
+              setSnackbar({
+                open: true,
+                message: 'Session expired. Please log in again.',
+                severity: 'warning'
+              });
+              // Return a resolved promise to prevent unhandled rejection
+              return Promise.resolve({ data: { orders: [] } });
+            }
+            // For other errors, return empty orders
+            return { data: { orders: [] } };
           })
         ]);
 
@@ -628,9 +653,6 @@ const DashboardPage = () => {
     }
   ], [navigate]);
 
-  // Make sure orderTableColumns is available in the component scope
-  const columns = orderTableColumns;
-
   // Render Recent Activity Item
   const renderActivityItem = (activity) => {
     return (
@@ -932,7 +954,7 @@ const DashboardPage = () => {
                   <Table>
                     <TableHead>
                       <TableRow>
-                        {columns.map((column) => (
+                        {orderTableColumns.map((column) => (
                           <TableCell key={column.id}>
                             {column.label || column.id}
                           </TableCell>
@@ -942,13 +964,13 @@ const DashboardPage = () => {
                     <TableBody>
                       {loading ? (
                         <TableRow>
-                          <TableCell colSpan={columns.length} align="center" sx={{ py: 4 }}>
+                          <TableCell colSpan={orderTableColumns.length} align="center" sx={{ py: 4 }}>
                             <CircularProgress />
                           </TableCell>
                         </TableRow>
                       ) : (!Array.isArray(stats?.recentOrders) || stats.recentOrders.length === 0) ? (
                         <TableRow>
-                          <TableCell colSpan={columns.length} align="center" sx={{ py: 4 }}>
+                          <TableCell colSpan={orderTableColumns.length} align="center" sx={{ py: 4 }}>
                             <Typography variant="body1" color="text.secondary">
                               {!stats?.recentOrders ? 'Failed to load orders' : 'No recent orders found'}
                             </Typography>
@@ -989,7 +1011,7 @@ const DashboardPage = () => {
                                 }
                               }}
                             >
-                              {columns.map((column) => {
+                              {orderTableColumns.map((column) => {
                                 const cellKey = `${rowKey}-${column.id}`;
                                 let cellContent = '';
                                 
