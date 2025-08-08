@@ -35,6 +35,7 @@ import {
 } from '@mui/icons-material';
 import PropTypes from 'prop-types';
 import OrderDetailModal from './OrderDetailModal';
+import { useNavigate } from 'react-router-dom';
 
 const CustomerDetailCard = ({ 
   customer = { name: '', email: '', phone: '' }, 
@@ -99,6 +100,8 @@ const CustomerDetailCard = ({
     }
   }, [orders, propTotalSpent, propTotalOrders, propAvgOrderValue, propLastOrderDate]);
 
+  const navigate = useNavigate();
+
   const recentOrders = useMemo(() => {
     if (!Array.isArray(orders) || orders.length === 0) return [];
     
@@ -147,6 +150,32 @@ const CustomerDetailCard = ({
       case 'declined': return 'error';
       default: return 'default';
     }
+  };
+
+  // Format address from object or string
+  const formatAddress = (addressObj) => {
+    if (!addressObj) return 'N/A';
+    
+    // If it's a string, return it directly
+    if (typeof addressObj === 'string') {
+      return addressObj;
+    }
+    
+    // If it's an object, format the address parts
+    if (typeof addressObj === 'object') {
+      const { street, city, state, postalCode, postal_code, country } = addressObj;
+      const parts = [
+        street,
+        city,
+        state,
+        postalCode || postal_code,
+        country && country !== 'USA' ? country : null
+      ].filter(Boolean);
+      
+      return parts.join(', ');
+    }
+    
+    return 'N/A';
   };
 
   const formatDate = (dateString) => {
@@ -251,16 +280,36 @@ const CustomerDetailCard = ({
         </CardContent>
 
         <CardActions sx={{ justifyContent: 'space-between', px: 2, pb: 2 }}>
-          <Button
-            size="small"
-            startIcon={<Visibility />}
-            onClick={(e) => {
-              e.stopPropagation();
-              handleClickOpen();
-            }}
-          >
-            View Details
-          </Button>
+          <Box>
+            <Button
+              size="small"
+              startIcon={<Visibility />}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleClickOpen();
+              }}
+              sx={{ mr: 1 }}
+            >
+              Quick View
+            </Button>
+            <Button
+              size="small"
+              variant="outlined"
+              color="primary"
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate(`/customers/${customer.id}`);
+              }}
+              sx={{
+                '&:hover': {
+                  backgroundColor: 'primary.main',
+                  color: 'primary.contrastText',
+                }
+              }}
+            >
+              Full Profile
+            </Button>
+          </Box>
           <Box>
             <Tooltip title="Edit Customer">
               <IconButton 
@@ -348,6 +397,20 @@ const CustomerDetailCard = ({
                   <ListItemText 
                     primary="Phone" 
                     secondary={customer.phone || 'N/A'}
+                  />
+                </ListItem>
+                <ListItem>
+                  <ListItemIcon>
+                    <LocationOn color="primary" />
+                  </ListItemIcon>
+                  <ListItemText 
+                    primary="Address" 
+                    secondary={formatAddress(customer.address) || 'N/A'}
+                    secondaryTypographyProps={{ 
+                      style: { 
+                        whiteSpace: 'pre-line' 
+                      } 
+                    }}
                   />
                 </ListItem>
                 <ListItem>

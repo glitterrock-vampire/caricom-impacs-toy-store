@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { customerService } from '../services/customerService';
 import { 
@@ -26,7 +26,9 @@ import {
   Card,
   CardContent,
   CardHeader,
-  IconButton
+  IconButton,
+  Snackbar,
+  Alert
 } from '@mui/material';
 import { 
   ArrowBack, 
@@ -37,9 +39,13 @@ import {
   AttachMoney,
   CalendarToday,
   Edit,
-  Delete
+  Delete,
+  LocationCity,
+  LocalPostOffice,
+  Public,
+  Home,
+  Info
 } from '@mui/icons-material';
-import axios from 'axios';
 
 // Tab panel component
 function TabPanel(props) {
@@ -62,41 +68,67 @@ function TabPanel(props) {
   );
 }
 
+// Safe date formatter
+const safeFormatDate = (dateString, formatString = 'MMM d, yyyy') => {
+  if (!dateString) return 'N/A';
+  try {
+    const date = typeof dateString === 'string' ? new Date(dateString) : dateString;
+    return date && !isNaN(date) ? new Intl.DateTimeFormat('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    }).format(date) : 'N/A';
+  } catch (e) {
+    console.error('Error formatting date:', e);
+    return 'N/A';
+  }
+};
+
+// Safe currency formatter
+const formatCurrency = (amount) => {
+  if (amount === null || amount === undefined) return '$0.00';
+  const num = parseFloat(amount);
+  return isNaN(num) ? '$0.00' : `$${num.toFixed(2)}`;
+};
+
 const CustomerPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [customer, setCustomer] = useState(null);
-  const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [tabValue, setTabValue] = useState(0);
 
-  useEffect(() => {
-    const fetchCustomerData = async () => {
-      try {
-        setLoading(true);
-        // First get customer details
-        const customerData = await customerService.getCustomerById(id);
-        setCustomer(customerData);
-        
-        // Then get customer orders
-        try {
-          const ordersData = await customerService.getCustomerOrders(id);
-          setOrders(ordersData.data || []);
-        } catch (ordersError) {
-          console.error('Error fetching customer orders:', ordersError);
-          setOrders([]);
-        }
-      } catch (err) {
-        console.error('Error fetching customer data:', err);
-        setError(err.message || 'Failed to load customer details. Please try again later.');
-      } finally {
-        setLoading(false);
-      }
-    };
+  const fetchCustomerData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError('');
+      
+      console.log('Fetching customer data for ID:', id);
+      // Get customer with orders and calculated stats
+      const customerData = await customerService.getCustomerById(id);
+      console.log('Received customer data:', customerData);
+      
+      setCustomer(customerData);
+    } catch (err) {
+      console.error('Error in fetchCustomerData:', err);
+      setError(err.message || 'Failed to load customer details. Please try again later.');
+      setSnackbar({
+        open: true,
+        message: 'Failed to load customer data',
+        severity: 'error'
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
 
-    fetchCustomerData();
-  }, [id, navigate]);
+  useEffect(() => {
+    if (id) {
+      fetchCustomerData();
+    }
+  }, [id, fetchCustomerData]);
 
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
@@ -127,7 +159,7 @@ const CustomerPage = () => {
     }
   };
 
-  if (loading) {
+  if (loading && !customer) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="80vh">
         <CircularProgress />
@@ -137,32 +169,110 @@ const CustomerPage = () => {
 
   if (error) {
     return (
-      <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-        <Typography color="error" variant="h6">{error}</Typography>
+      <Container maxWidth="lg" sx={{ mt: 4, mb: 4, textAlign: 'center' }}>
+        <Typography color="error" variant="h6" gutterBottom>
+          {error}
+        </Typography>
+        <Button 
+          variant="contained" 
+          color="primary" 
+          onClick={() => navigate('/customers')}
+          sx={{ mt: 2 }}
+        >
+          Back to Customers
+        </Button>
       </Container>
     );
   }
 
   if (!customer) {
     return (
-      <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-        <Typography variant="h6">Customer not found</Typography>
+      <Container maxWidth="lg" sx={{ mt: 4, mb: 4, textAlign: 'center' }}>
+        <Typography variant="h5" gutterBottom>Customer not found</Typography>
+        <Typography variant="body1" color="textSecondary" paragraph>
+          The requested customer could not be found or may have been removed.
+        </Typography>
+        <Button 
+          variant="contained" 
+          color="primary" 
+          onClick={() => navigate('/customers')}
+          sx={{ mt: 2 }}
+        >
+          Back to Customers
+        </Button>
       </Container>
     );
   }
 
-  const { name, email, phone, address, city, state, postalCode, country, createdAt } = customer;
-  const fullAddress = `${address || ''}, ${city || ''}, ${state || ''} ${postalCode || ''} ${country || ''}`;
-  const customerSince = new Date(createdAt).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  });
+  const { 
+    name, 
+    email, 
+    phone, 
+    address: addressObj, // Address might be an object
+    city: cityProp, 
+    state: stateProp, 
+    postalCode: postalCodeProp, 
+    country: countryProp,
+    createdAt,
+    totalOrders = 0,
+    totalSpent = 0,
+    avgOrderValue = 0,
+    lastOrderDate,
+    orders = []
+  } = customer;
 
-  // Calculate customer stats
-  const totalOrders = orders.length;
-  const totalSpent = orders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
-  const avgOrderValue = totalOrders > 0 ? totalSpent / totalOrders : 0;
+  // Helper to safely get address fields from various possible structures
+  const getAddressField = (field) => {
+    // If address is a string, return it only for street field
+    if (typeof addressObj === 'string') {
+      return field === 'street' ? addressObj : '';
+    }
+    
+    // If address is an object, try to get the field
+    if (addressObj && typeof addressObj === 'object') {
+      // Handle different field name variations
+      if (field === 'postalCode' && addressObj['postal_code']) {
+        return addressObj['postal_code'];
+      }
+      return addressObj[field] || '';
+    }
+    
+    // Fallback to individual props if addressObj is not usable
+    const fieldMap = {
+      street: addressObj || '',
+      city: cityProp || '',
+      state: stateProp || '',
+      postalCode: postalCodeProp || '',
+      country: countryProp || 'USA'
+    };
+    
+    return fieldMap[field] || '';
+  };
+
+  // Get address components with safe defaults
+  const address = String(getAddressField('street') || '');
+  const city = String(getAddressField('city') || '');
+  const state = String(getAddressField('state') || '');
+  const postalCode = String(getAddressField('postalCode') || getAddressField('postal_code') || '');
+  const country = String(getAddressField('country') || 'USA');
+  
+  // Format the full address as a string
+  const formatAddress = () => {
+    const parts = [
+      address,
+      city,
+      state,
+      postalCode,
+      country && country !== 'USA' ? country : null
+    ].filter(Boolean);
+    
+    return parts.join(', ');
+  };
+  
+  const formattedAddress = formatAddress();
+    
+  const customerSince = safeFormatDate(createdAt, 'MMMM d, yyyy');
+  const lastOrder = safeFormatDate(lastOrderDate);
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
@@ -244,12 +354,53 @@ const CustomerPage = () => {
                 />
               </ListItem>
               <Divider component="li" variant="inset" />
-              <ListItem>
-                <LocationOn color="action" sx={{ mr: 1 }} />
+              <ListItem sx={{ alignItems: 'flex-start' }}>
+                <LocationOn color="action" sx={{ mt: 0.5, mr: 1 }} />
                 <ListItemText 
-                  primary={fullAddress.trim().replace(/^,\s*|\s*,/g, '') || 'No address provided'} 
+                  primary={
+                    <Box>
+                      <Typography variant="body1" component="div">
+                        {formattedAddress || 'No address provided'}
+                      </Typography>
+                      {formattedAddress && (
+                        <Box display="flex" alignItems="center" gap={1} mt={0.5} flexWrap="wrap">
+                          {city && (
+                            <Box display="flex" alignItems="center" gap={0.5}>
+                              <LocationCity color="action" fontSize="small" />
+                              <Typography variant="body2" component="span">
+                                {city}
+                              </Typography>
+                            </Box>
+                          )}
+                          {state && (
+                            <Box display="flex" alignItems="center" gap={0.5}>
+                              <LocationOn color="action" fontSize="small" />
+                              <Typography variant="body2" component="span">
+                                {state}
+                              </Typography>
+                            </Box>
+                          )}
+                          {postalCode && (
+                            <Box display="flex" alignItems="center" gap={0.5}>
+                              <LocalPostOffice color="action" fontSize="small" />
+                              <Typography variant="body2" component="span">
+                                {postalCode}
+                              </Typography>
+                            </Box>
+                          )}
+                          {country && country !== 'USA' && (
+                            <Box display="flex" alignItems="center" gap={0.5}>
+                              <Public color="action" fontSize="small" />
+                              <Typography variant="body2" component="span">
+                                {country}
+                              </Typography>
+                            </Box>
+                          )}
+                        </Box>
+                      )}
+                    </Box>
+                  }
                   secondary="Address"
-                  primaryTypographyProps={{ style: { whiteSpace: 'pre-line' } }}
                 />
               </ListItem>
             </List>
@@ -266,7 +417,7 @@ const CustomerPage = () => {
                 <ListItem>
                   <ShoppingCart color="primary" sx={{ mr: 1 }} />
                   <ListItemText 
-                    primary={totalOrders} 
+                    primary={totalOrders || 0} 
                     secondary="Total Orders"
                   />
                 </ListItem>
@@ -274,7 +425,7 @@ const CustomerPage = () => {
                 <ListItem>
                   <AttachMoney color="primary" sx={{ mr: 1 }} />
                   <ListItemText 
-                    primary={`$${totalSpent.toFixed(2)}`} 
+                    primary={formatCurrency(totalSpent)}
                     secondary="Total Spent"
                   />
                 </ListItem>
@@ -282,8 +433,16 @@ const CustomerPage = () => {
                 <ListItem>
                   <AttachMoney color="primary" sx={{ mr: 1 }} />
                   <ListItemText 
-                    primary={`$${avgOrderValue.toFixed(2)}`} 
+                    primary={formatCurrency(avgOrderValue)}
                     secondary="Avg. Order Value"
+                  />
+                </ListItem>
+                <Divider component="li" variant="inset" />
+                <ListItem>
+                  <CalendarToday color="primary" sx={{ mr: 1 }} />
+                  <ListItemText 
+                    primary={lastOrder || 'N/A'}
+                    secondary="Last Order"
                   />
                 </ListItem>
               </List>
@@ -320,7 +479,7 @@ const CustomerPage = () => {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {orders.map((order) => (
+                              {orders.slice(0, 10).map((order) => (
                         <TableRow key={order.id} hover>
                           <TableCell>
                             <Link to={`/orders/${order.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>

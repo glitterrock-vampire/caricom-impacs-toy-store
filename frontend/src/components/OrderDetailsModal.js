@@ -37,6 +37,7 @@
 //   Person,
 //   Email,
 //   Phone,
+//   Home,
 //   LocationOn,
 //   CalendarToday,
 //   AttachMoney,
@@ -44,6 +45,9 @@
 //   Receipt,
 //   Add,
 //   Remove,
+//   LocationCity,
+//   LocalPostOffice,
+//   Public
 // } from '@mui/icons-material';
 
 // const OrderDetailsModal = ({ open, onClose, order, onUpdate }) => {
@@ -284,6 +288,58 @@
 //                         <ListItemText 
 //                           primary="Phone" 
 //                           secondary={order.customer?.phone || 'No phone provided'}
+//                         />
+//                       </ListItem>
+//                       {/* Shipping Address Section */}
+//                       <ListItem sx={{ alignItems: 'flex-start' }}>
+//                         <ListItemIcon sx={{ mt: 1 }}>
+//                           <Home color="primary" />
+//                         </ListItemIcon>
+//                         <ListItemText 
+//                           primary="Shipping Address" 
+//                           secondary={
+//                             <Box>
+//                               <Typography variant="body2" component="div">
+//                                 {order.customer?.name || 'Unknown Customer'}
+//                               </Typography>
+//                               {order.customer?.address && (
+//                                 <Typography variant="body2" component="div">
+//                                   {order.customer.address}
+//                                 </Typography>
+//                               )}
+//                               <Box display="flex" alignItems="center" gap={1} mt={0.5}>
+//                                 {order.customer?.city && (
+//                                   <Box display="flex" alignItems="center" gap={0.5}>
+//                                     <LocationCity color="action" fontSize="small" />
+//                                     <Typography variant="body2" component="span">
+//                                       {order.customer.city}
+//                                     </Typography>
+//                                   </Box>
+//                                 )}
+//                                 {order.customer?.state && (
+//                                   <Typography variant="body2" component="span">
+//                                     {order.customer.state}
+//                                   </Typography>
+//                                 )}
+//                                 {order.customer?.postalCode && (
+//                                   <Box display="flex" alignItems="center" gap={0.5}>
+//                                     <LocalPostOffice color="action" fontSize="small" />
+//                                     <Typography variant="body2" component="span">
+//                                       {order.customer.postalCode}
+//                                     </Typography>
+//                                   </Box>
+//                                 )}
+//                               </Box>
+//                               {order.customer?.country && (
+//                                 <Box display="flex" alignItems="center" gap={0.5} mt={0.5}>
+//                                   <Public color="action" fontSize="small" />
+//                                   <Typography variant="body2">
+//                                     {order.customer.country}
+//                                   </Typography>
+//                                 </Box>
+//                               )}
+//                             </Box>
+//                           }
 //                         />
 //                       </ListItem>
 //                     </List>

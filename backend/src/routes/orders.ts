@@ -4,13 +4,6 @@ import { authenticate, requireAdmin } from '../middleware/auth';
 import { createError } from '../middleware/errorHandler';
 import { JWTPayload } from '../lib/auth';
 
-// Extend the Express Request type to include the user property
-declare module 'express' {
-  interface Request {
-    user?: JWTPayload;
-  }
-}
-
 // Define the AuthRequest type
 type AuthRequest = Request & {
   user?: JWTPayload;

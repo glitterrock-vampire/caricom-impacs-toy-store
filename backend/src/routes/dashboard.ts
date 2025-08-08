@@ -1,6 +1,19 @@
 import { Router } from 'express';
 import { Request, Response, NextFunction } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Order, OrderItem } from '@prisma/client';
+
+interface OrderWithItems extends Order {
+  orderItems: (OrderItem & {
+    product: {
+      price: number;
+    } | null;
+  })[];
+  customer: {
+    name: string | null;
+    email: string | null;
+  } | null;
+  total?: number;
+}
 import { authenticate, AuthRequest } from '../middleware/auth';
 
 const router = Router();
@@ -178,10 +191,42 @@ router.get('/recent-orders', authenticate, async (req: AuthRequest, res: Respons
         customer: {
           select: { name: true, email: true },
         },
+        orderItems: {
+          include: {
+            product: {
+              select: {
+                price: true
+              }
+            }
+          }
+        }
       },
+    }) as unknown as OrderWithItems[];
+
+    // Calculate total for each order
+    const ordersWithTotal = recentOrders.map(order => {
+      // If totalAmount is already set, use it
+      if (order.totalAmount) {
+        return {
+          ...order,
+          total: parseFloat(order.totalAmount.toFixed(2))
+        };
+      }
+      
+      // Otherwise calculate from order items
+      const total = order.orderItems?.reduce((sum: number, item) => {
+        const price = Number(item.unitPrice) || Number(item.product?.price) || 0;
+        const quantity = item.quantity || 0;
+        return sum + (price * quantity);
+      }, 0) || 0;
+
+      return {
+        ...order,
+        total: parseFloat(total.toFixed(2)) // Ensure we have 2 decimal places
+      };
     });
 
-    res.json(recentOrders);
+    res.json(ordersWithTotal);
   } catch (error) {
     next(error);
   }

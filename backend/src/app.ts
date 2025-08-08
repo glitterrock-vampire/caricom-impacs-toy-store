@@ -73,13 +73,48 @@ app.use('/uploads', (req, res, next) => {
   }
 }));
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'),
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100'),
-  message: 'Too many requests from this IP, please try again later.',
-});
+// Rate limiting configuration
+const isDevelopment = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
+
+const rateLimitConfig = {
+  windowMs: isDevelopment ? 60 * 1000 : 15 * 60 * 1000, // 1 minute in dev, 15 minutes in production
+  max: isDevelopment ? 1000 : 100, // 1000 requests per minute in dev, 100 per 15min in production
+  message: JSON.stringify({
+    status: 'error',
+    message: 'Too many requests from this IP, please try again later.'
+  }),
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  skip: (req: express.Request) => {
+    // Skip rate limiting for health checks and development environment
+    if (isDevelopment || req.path === '/health') {
+      return true;
+    }
+    return false;
+  },
+  handler: (req: express.Request, res: express.Response) => {
+    res.status(429).json({
+      status: 'error',
+      message: 'Too many requests, please try again later.',
+      timestamp: new Date().toISOString()
+    });
+  }
+};
+
+// Apply rate limiting to API routes
+const limiter = rateLimit(rateLimitConfig);
 app.use('/api/', limiter);
+
+// Log rate limit events in development
+if (isDevelopment) {
+  app.use((req, res, next) => {
+    const remaining = res.getHeader('X-RateLimit-Remaining');
+    if (remaining && parseInt(remaining as string) < 10) {
+      console.warn(`Rate limit warning: ${remaining} requests remaining`);
+    }
+    next();
+  });
+}
 
 // CORS configuration is already applied at the top level
 // This ensures all routes have CORS enabled

@@ -168,10 +168,31 @@ router.get('/:id/orders', authenticate, async (req, res, next) => {
         customer: {
           select: { id: true, name: true, email: true },
         },
+        orderItems: {
+          include: {
+            product: {
+              select: { price: true }
+            }
+          }
+        }
       },
     });
 
-    res.json(orders);
+    // Calculate total amount for each order
+    const ordersWithTotal = orders.map(order => {
+      const total = order.orderItems?.reduce((sum, item) => {
+        const price = Number(item.unitPrice) || Number(item.product?.price) || 0;
+        const quantity = item.quantity || 0;
+        return sum + (price * quantity);
+      }, 0) || 0;
+
+      return {
+        ...order,
+        totalAmount: parseFloat(total.toFixed(2))
+      };
+    });
+
+    res.json(ordersWithTotal);
   } catch (error) {
     next(error);
   }
@@ -186,10 +207,33 @@ router.get('/orders', authenticate, requireAdmin, async (req, res, next) => {
         customer: {
           select: { id: true, name: true, email: true },
         },
+        orderItems: {
+          include: {
+            product: {
+              select: {
+                price: true
+              }
+            }
+          }
+        }
       },
     });
 
-    res.json(orders);
+    // Calculate total for each order
+    const ordersWithTotal = orders.map(order => {
+      const total = order.orderItems?.reduce((sum, item) => {
+        const price = Number(item.unitPrice) || Number(item.product?.price) || 0;
+        const quantity = item.quantity || 0;
+        return sum + (price * quantity);
+      }, 0) || 0;
+
+      return {
+        ...order,
+        totalAmount: parseFloat(total.toFixed(2)) // Ensure 2 decimal places
+      };
+    });
+
+    res.json(ordersWithTotal);
   } catch (error) {
     next(error);
   }
