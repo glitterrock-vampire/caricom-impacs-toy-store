@@ -32,8 +32,8 @@ import {
 } from 'chart.js';
 ChartJS.register(CategoryScale, LinearScale, Title, ChartTooltip, Legend, ArcElement, PointElement, LineElement, Filler);
 
-// World map URL
-const geoUrl = 'https://raw.githubusercontent.com/zcreativelabs/react-simple-maps/master/topojson-maps/world-110m.json';
+// World map URL - Using a reliable CDN source
+const geoUrl = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json';
 const requestCache = new Map();
 
 // Cache to store API responses
@@ -392,8 +392,20 @@ const DashboardPage = () => {
       </Box>
 
       {/* KPI Cards */}
-      <Grid container spacing={3} sx={{ mb: 3 }}>
-        {kpiCards.map(card => <Grid key={card.title} item xs={12} sm={6} md={3} sx={{ display: 'flex' }}>{renderKpiCard(card)}</Grid>)}
+      <Grid container spacing={3} sx={{ mb: 3 }} display="grid" gridTemplateColumns="repeat(12, 1fr)">
+        {kpiCards.map(card => (
+          <Grid 
+            key={card.title} 
+            item 
+            xs={12} 
+            sm={6} 
+            md={3} 
+            sx={{ display: 'flex' }}
+            gridColumn={{ xs: 'span 12', sm: 'span 6', md: 'span 3' }}
+          >
+            {renderKpiCard(card)}
+          </Grid>
+        ))}
       </Grid>
 
       {/* Quick Actions */}
@@ -405,8 +417,8 @@ const DashboardPage = () => {
       </Card>
 
       {/* Charts Row */}
-      <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={8}>
+      <Grid container spacing={3} sx={{ mb: 3 }} display="grid" gridTemplateColumns="repeat(12, 1fr)">
+        <Grid item xs={12} md={8} gridColumn={{ xs: 'span 12', md: 'span 8' }}>
           <Card sx={{ height: '100%', p: 2 }}>
             <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
               <Box display="flex" alignItems="center"><BarChartIcon color="primary" sx={{ mr: 1 }} /><Typography variant="h6">Monthly Orders</Typography></Box>
@@ -417,7 +429,7 @@ const DashboardPage = () => {
             <Box sx={{ height: 300, position: 'relative' }}><Line data={chartData.weeklyOrders} options={chartConfigurations.lineChartOptions} /></Box>
           </Card>
         </Grid>
-        <Grid item xs={12} md={4}>
+        <Grid item xs={12} sm={6} md={4} gridColumn={{ xs: 'span 12', sm: 'span 6', md: 'span 4' }}>
           <Card sx={{ height: '100%', p: 2 }}>
             <Box display="flex" alignItems="center" mb={2}><PieChartIcon color="primary" sx={{ mr: 1 }} /><Typography variant="h6">Order Status</Typography></Box>
             <Box sx={{ height: 300, position: 'relative' }}><Pie data={chartData.categoryDistribution} options={chartConfigurations.pieChartOptions} /></Box>
@@ -426,8 +438,8 @@ const DashboardPage = () => {
       </Grid>
 
       {/* Recent Activities and Recent Orders */}
-      <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={6}>
+      <Grid container spacing={3} sx={{ mb: 3 }} display="grid" gridTemplateColumns="repeat(12, 1fr)">
+        <Grid item xs={12} md={6} gridColumn={{ xs: 'span 12', md: 'span 6' }}>
           <Card sx={{ height: '100%' }}>
             <CardHeader title="Recent Activities" titleTypographyProps={{ variant: 'h6' }} avatar={<NotificationsIcon color="primary" />} action={<IconButton size="small" onClick={fetchDashboardData}><RefreshIcon fontSize="small" /></IconButton>} />
             <Divider />
@@ -435,7 +447,7 @@ const DashboardPage = () => {
             <Box textAlign="center" p={1}><Button size="small" color="primary">View All Activities</Button></Box>
           </Card>
         </Grid>
-        <Grid item xs={12} md={6}>
+        <Grid item xs={12} md={6} gridColumn={{ xs: 'span 12', md: 'span 6' }}>
           <Card sx={{ height: '100%' }}>
             <CardHeader
               title="Recent Orders"

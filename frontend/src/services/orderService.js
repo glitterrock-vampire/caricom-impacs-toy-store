@@ -30,4 +30,27 @@ export const orderService = {
       throw error;
     }
   },
+
+  async getOrderById(id) {
+    try {
+      const response = await api.get(`/api/orders/${id}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching order:', error);
+      if (error.response?.status === 404) {
+        throw new Error('Order not found');
+      }
+      throw error;
+    }
+  },
+
+  async getOrderItems(orderId) {
+    try {
+      const response = await api.get(`/api/orders/${orderId}/items`);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching order items:', error);
+      throw error;
+    }
+  },
 };

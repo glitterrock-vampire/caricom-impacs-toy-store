@@ -10,6 +10,8 @@ import OrdersPage from './pages/OrdersPage';
 import AccountManagementPage from './pages/AccountManagementPage';
 import CustomerManagementPage from './pages/CustomerManagementPage';
 import LoginPage from './pages/LoginPage';
+import OrderPage from './pages/OrderPage';
+import CustomerPage from './pages/CustomerPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import { isAuthenticated } from './services/authService';
 
@@ -81,6 +83,22 @@ function App() {
               element={
                 <ProtectedRoute>
                   <AccountManagementPage />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/orders/:id" 
+              element={
+                <ProtectedRoute>
+                  <OrderPage />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/customers/:id" 
+              element={
+                <ProtectedRoute>
+                  <CustomerPage />
                 </ProtectedRoute>
               } 
             />
