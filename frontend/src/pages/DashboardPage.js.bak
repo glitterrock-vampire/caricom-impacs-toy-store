@@ -24,7 +24,6 @@ import { format } from 'date-fns';
 import api from '../services/api';
 import { dashboardService } from '../services/dashboardService';
 import { debounce } from 'lodash';
-import { v4 as uuidv4 } from 'uuid';
 
 // Chart.js setup
 import {
@@ -34,7 +33,6 @@ ChartJS.register(CategoryScale, LinearScale, Title, ChartTooltip, Legend, ArcEle
 
 // World map URL
 const geoUrl = 'https://raw.githubusercontent.com/zcreativelabs/react-simple-maps/master/topojson-maps/world-110m.json';
-const requestCache = new Map();
 
 // Cache to store API responses
 const cache = new Map();
