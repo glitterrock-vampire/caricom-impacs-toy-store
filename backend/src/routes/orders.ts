@@ -21,6 +21,13 @@ declare global {
 // Initialize Prisma client
 const prisma = new PrismaClient();
 
+// Helper function to ensure ID is a string
+const ensureStringId = (id: string | number | undefined | null): string => {
+  if (id === undefined || id === null) return '';
+  return typeof id === 'string' ? id : id.toString();
+};
+
+
 // Extended types to include relations
 type OrderWithRelations = Order & {
   customer: Customer | null;
@@ -37,17 +44,20 @@ interface OrderItemProduct {
 }
 
 interface OrderItemResponse {
-  id: number;
+  id: string | number;
   productId: string;
   quantity: number;
   price: number;
   product: OrderItemProduct;
 }
 
-interface OrderResponse extends Omit<Order, 'items' | 'orderItems'> {
+// Create a base order type that matches the Prisma Order model
+type BaseOrder = Omit<Order, 'items' | 'orderItems' | 'customer'>;
+
+interface OrderResponse extends BaseOrder {
   items: OrderItemResponse[];
   customer?: {
-    id: number;
+    id: string | number;
     name: string;
     email: string;
     phone: string | null;
@@ -151,12 +161,12 @@ router.get('/:id', authenticate, async (req: AuthRequest, res, next) => {
     if (orderWithItems.orderItems && orderWithItems.orderItems.length > 0) {
       // Use orderItems relation if available
       itemsWithProducts = orderWithItems.orderItems.map((item: OrderItem & { product: Product }) => ({
-        id: item.id,
-        productId: item.productId,
+        id: ensureStringId(item.id),
+        productId: ensureStringId(item.productId),
         quantity: item.quantity,
         price: item.unitPrice,
         product: {
-          id: item.product?.id || item.productId,
+          id: ensureStringId(item.product?.id) || ensureStringId(item.productId),
           name: item.product?.name || 'Product not found',
           price: item.product?.price || item.unitPrice,
           sku: item.product?.sku || 'N/A',
@@ -171,7 +181,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res, next) => {
           
         // Type for the parsed order item
         interface ParsedOrderItem {
-          id?: number;
+          id?: string | number;
           productId: string;
           quantity?: number;
           price?: number;
@@ -192,8 +202,8 @@ router.get('/:id', authenticate, async (req: AuthRequest, res, next) => {
               });
 
               return {
-                id: item.id || 0,
-                productId: item.productId,
+                id: ensureStringId(item.id),
+                productId: ensureStringId(item.productId),
                 quantity: item.quantity || 1,
                 price: item.price || 0,
                 product: product || {
@@ -257,12 +267,15 @@ router.get('/:id', authenticate, async (req: AuthRequest, res, next) => {
 // PUT /api/orders/:id
 router.put('/:id', authenticate, requireAdmin, async (req: AuthRequest, res, next) => {
   try {
-    const { id } = req.params;
+    const orderId = parseInt(req.params.id);
+    if (isNaN(orderId)) {
+      throw createError('Invalid order ID', 400);
+    }
     const updateData = req.body;
 
     // Validate the order exists
     const existingOrder = await prisma.order.findUnique({
-      where: { id: parseInt(id) },
+      where: { id: orderId },
     });
 
     if (!existingOrder) {
@@ -271,7 +284,7 @@ router.put('/:id', authenticate, requireAdmin, async (req: AuthRequest, res, nex
 
     // Update the order
     const updatedOrder = await prisma.order.update({
-      where: { id: parseInt(id) },
+      where: { id: orderId },
       data: {
         status: updateData.status,
         items: updateData.items,
@@ -298,10 +311,13 @@ router.put('/:id', authenticate, requireAdmin, async (req: AuthRequest, res, nex
 // DELETE /api/orders/:id
 router.delete('/:id', authenticate, requireAdmin, async (req: AuthRequest, res, next) => {
   try {
-    const { id } = req.params;
+    const orderId = parseInt(req.params.id);
+    if (isNaN(orderId)) {
+      throw createError('Invalid order ID', 400);
+    }
 
     await prisma.order.delete({
-      where: { id: parseInt(id) },
+      where: { id: orderId },
     });
 
     res.status(204).send();

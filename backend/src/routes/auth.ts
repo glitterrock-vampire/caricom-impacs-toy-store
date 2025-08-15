@@ -216,7 +216,7 @@ router.get('/profile', authenticate, async (req: AuthRequest, res, next) => {
       throw createError('User not authenticated', 401);
     }
 
-    const userId = req.user.id;
+    const userId = Number(req.user.id);
 
     try {
       const user = await prisma.user.findUnique({
@@ -364,7 +364,7 @@ router.put('/users/:id', authenticate, async (req: AuthRequest, res, next): Prom
     const updateData = updateUserSchema.parse(req.body);
 
     // Check if user can update (self or admin)
-    if (req.user?.id !== userId && !req.user?.isAdmin) {
+    if (Number(req.user?.id) !== userId && !req.user?.isAdmin) {
       res.status(403).json({ error: 'Unauthorized to update this user' });
       return;
     }
@@ -393,15 +393,14 @@ router.put('/users/:id', authenticate, async (req: AuthRequest, res, next): Prom
 // DELETE /auth/users/:id - Delete user (Admin only)
 router.delete('/users/:id', authenticate, requireAdmin, async (req: AuthRequest, res, next) => {
   try {
-    const { id } = req.params;
-    const userId = parseInt(id);
+    const id = parseInt(req.params.id);
 
-    if (req.user?.id === userId) {
+    if (Number(req.user?.id) === id) {
       throw createError('Cannot delete your own account', 400);
     }
 
     await prisma.user.delete({
-      where: { id: userId },
+      where: { id },
     });
 
     res.status(204).send();

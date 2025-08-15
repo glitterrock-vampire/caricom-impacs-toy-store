@@ -122,10 +122,10 @@ router.get('/', authenticate, async (req: AuthRequest, res, next) => {
 // GET /api/products/:id
 router.get('/:id', authenticate, async (req: AuthRequest, res, next) => {
   try {   
-    const { id } = req.params;
+    const productId = req.params.id;
 
     const product = await prisma.product.findUnique({
-      where: { id },
+      where: { id: productId },
     });
 
     if (!product) {
@@ -181,15 +181,15 @@ router.post('/', authenticate, requireAdmin, upload.single('image'), async (req:
       data: {
         name,
         category,
-        price,
-        stock,
+        price: Number(price),
+        stock: Number(stock),
         description,
         sku,
         status,
         gender,
         ageRange,
         imageUrl,
-        userId: req.user!.id,
+        userId: req.user!.id, // Remove toString() as userId should be a number
       },
     });
 
@@ -202,14 +202,16 @@ router.post('/', authenticate, requireAdmin, upload.single('image'), async (req:
 // PUT /api/products/:id
 router.put('/:id', authenticate, requireAdmin, upload.single('image'), async (req: AuthRequest, res, next) => {
   try {
-    const { id } = req.params;
+    const productId = req.params.id;
     
     // Parse and validate the request body
     const updateData = updateProductSchema.parse({
       ...req.body,
-      price: req.body.price !== undefined ? parseFloat(req.body.price) : undefined,
-      stock: req.body.stock !== undefined ? parseInt(req.body.stock, 10) : undefined,
+      price: req.body.price !== undefined ? Number(req.body.price) : undefined,
+      stock: req.body.stock !== undefined ? Number(req.body.stock) : undefined,
     });
+    
+    const userId = req.user!.id.toString();
     
     // If a new image was uploaded, update the image URL
     if (req.file) {
@@ -217,7 +219,7 @@ router.put('/:id', authenticate, requireAdmin, upload.single('image'), async (re
       
       // Delete the old image if it exists
       const existingProduct = await prisma.product.findUnique({
-        where: { id },
+        where: { id: productId.toString() },
         select: { imageUrl: true }
       });
       
@@ -231,7 +233,7 @@ router.put('/:id', authenticate, requireAdmin, upload.single('image'), async (re
 
     // Always recalculate status based on current stock
     const currentStock = updateData.stock !== undefined ? updateData.stock : 
-      (await prisma.product.findUnique({ where: { id } }))?.stock || 0;
+      (await prisma.product.findUnique({ where: { id: productId.toString() } }))?.stock || 0;
       
     if (currentStock === 0) {
       updateData.status = 'out_of_stock';
@@ -242,7 +244,7 @@ router.put('/:id', authenticate, requireAdmin, upload.single('image'), async (re
     }
 
     const product = await prisma.product.update({
-      where: { id },
+      where: { id: productId.toString() }, // Ensure ID is a string for Prisma
       data: updateData,
     });
 
@@ -255,17 +257,16 @@ router.put('/:id', authenticate, requireAdmin, upload.single('image'), async (re
 // DELETE /api/products/:id
 router.delete('/:id', authenticate, requireAdmin, async (req: AuthRequest, res, next) => {
   try {
-    const { id } = req.params;
-    
-    // Get the product first to check for an image
+    const productId = req.params.id;
+
     const product = await prisma.product.findUnique({
-      where: { id },
+      where: { id: productId },
       select: { imageUrl: true }
     });
     
     // Delete the product
     await prisma.product.delete({
-      where: { id },
+      where: { id: productId },
     });
     
     // If the product had an image, delete it
@@ -301,6 +302,8 @@ router.get('/meta/categories', authenticate, async (req: AuthRequest, res, next)
 // GET /api/products/stats
 router.get('/meta/stats', authenticate, async (req: AuthRequest, res, next) => {
   try {
+    const userId = req.user!.id;
+    
     const [
       totalProducts,
       inStockCount,
@@ -308,12 +311,12 @@ router.get('/meta/stats', authenticate, async (req: AuthRequest, res, next) => {
       outOfStockCount,
       totalValue
     ] = await Promise.all([
-      prisma.product.count({ where: { userId: req.user!.id } }),
-      prisma.product.count({ where: { status: 'in_stock', userId: req.user!.id } }),
-      prisma.product.count({ where: { status: 'low_stock', userId: req.user!.id } }),
-      prisma.product.count({ where: { status: 'out_of_stock', userId: req.user!.id } }),
+      prisma.product.count({ where: { userId: { equals: userId } } }),
+      prisma.product.count({ where: { status: 'in_stock', userId: { equals: userId } } }),
+      prisma.product.count({ where: { status: 'low_stock', userId: { equals: userId } } }),
+      prisma.product.count({ where: { status: 'out_of_stock', userId: { equals: userId } } }),
       prisma.product.aggregate({
-        where: { userId: req.user!.id },
+        where: { userId: { equals: userId } },
         _sum: {
           stock: true,
         },
@@ -322,17 +325,19 @@ router.get('/meta/stats', authenticate, async (req: AuthRequest, res, next) => {
 
     // Calculate total inventory value
     const products = await prisma.product.findMany({
-      where: { userId: req.user!.id },
+      where: { userId: { equals: userId } },
       select: { price: true, stock: true },
     });
-    const inventoryValue = products.reduce((sum: number, product: any) => sum + (product.price * product.stock), 0);
+    const inventoryValue = products.reduce((sum, product) => {
+      return sum + (Number(product.price) * Number(product.stock));
+    }, 0);
 
     res.json({
       totalProducts,
       inStockCount,
       lowStockCount,
       outOfStockCount,
-      totalStock: totalValue._sum.stock || 0,
+      totalStock: totalValue._sum?.stock ?? 0,
       inventoryValue,
     });
   } catch (error) {

@@ -63,7 +63,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res, next) => {
 
     const customer = await prisma.customer.findUnique({
       where: {
-        id: parseInt(id),
+        id: parseInt(id) || 0,
       },
       include: {
         orders: {
@@ -129,7 +129,7 @@ router.put('/:id', authenticate, requireAdmin, async (req, res, next) => {
     const updateData = updateCustomerSchema.parse(req.body);
 
     const customer = await prisma.customer.update({
-      where: { id: parseInt(id) },
+      where: { id: parseInt(id) || 0 },
       data: updateData,
     });
 
@@ -147,7 +147,7 @@ router.delete('/:id', authenticate, requireAdmin, async (req, res, next) => {
     const { id } = req.params;
 
     await prisma.customer.delete({
-      where: { id: parseInt(id) },
+      where: { id: parseInt(id) || 0 },
     });
 
     res.status(204).send();
@@ -162,7 +162,7 @@ router.get('/:id/orders', authenticate, async (req, res, next) => {
     const { id } = req.params;
 
     const orders = await prisma.order.findMany({
-      where: { customerId: parseInt(id) },
+      where: { customerId: parseInt(id) || 0 },
       orderBy: { orderDate: 'desc' },
       include: {
         customer: {
@@ -180,11 +180,13 @@ router.get('/:id/orders', authenticate, async (req, res, next) => {
 
     // Calculate total amount for each order
     const ordersWithTotal = orders.map(order => {
-      const total = order.orderItems?.reduce((sum, item) => {
-        const price = Number(item.unitPrice) || Number(item.product?.price) || 0;
-        const quantity = item.quantity || 0;
-        return sum + (price * quantity);
-      }, 0) || 0;
+      const total = order.items && typeof order.items === 'object' && Array.isArray(order.items)
+        ? (order.items as any[]).reduce((sum: number, item: any) => {
+            const price = Number(item.price) || 0;
+            const quantity = Number(item.quantity) || 0;
+            return sum + (price * quantity);
+          }, 0)
+        : 0;
 
       return {
         ...order,
