@@ -11,6 +11,7 @@ import AccountManagementPage from './pages/AccountManagementPage';
 import CustomerManagementPage from './pages/CustomerManagementPage';
 import LoginPage from './pages/LoginPage';
 import OrderPage from './pages/OrderPage';
+import NewOrderPage from './pages/NewOrderPage';
 import CustomerPage from './pages/CustomerPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import { isAuthenticated } from './services/authService';
@@ -83,6 +84,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <AccountManagementPage />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/orders/new" 
+              element={
+                <ProtectedRoute>
+                  <NewOrderPage />
                 </ProtectedRoute>
               } 
             />

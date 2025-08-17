@@ -68,6 +68,236 @@ interface OrderResponse extends BaseOrder {
 
 const router = express.Router();
 
+// POST /api/orders
+router.post('/', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { customerId, items, deliveryAddress, deliveryDate, notes, shippingMethod } = req.body;
+
+    // Validate required fields
+    if (!customerId) {
+      return res.status(400).json({ error: 'Customer ID is required' });
+    }
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'At least one order item is required' });
+    }
+
+    // Validate and process order items
+    const orderItems = [];
+    let totalAmount = 0;
+
+    // Process each item in the order
+    for (const item of items) {
+      if (!item.productId || !item.quantity) {
+        return res.status(400).json({ error: 'Each item must have a productId and quantity' });
+      }
+
+      console.log('Processing order item:', {
+        productId: item.productId,
+        productIdType: typeof item.productId,
+        quantity: item.quantity
+      });
+
+      // Get product details to calculate price and check stock
+      let product;
+      try {
+        product = await prisma.product.findUnique({
+          where: { id: item.productId },
+          select: { 
+            id: true,
+            name: true,
+            price: true,
+            stock: true,
+            status: true,
+            sku: true
+          }
+        });
+        
+        console.log('Found product:', product ? {
+          id: product.id,
+          name: product.name,
+          price: product.price,
+          stock: product.stock,
+          status: product.status,
+          sku: product.sku
+        } : 'Not found');
+        
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        const errorStack = error instanceof Error ? error.stack : undefined;
+        
+        console.error('Error fetching product:', {
+          productId: item.productId,
+          error: errorMessage,
+          stack: errorStack
+        });
+        return res.status(500).json({ 
+          error: `Error checking product with ID ${item.productId}`,
+          details: errorMessage
+        });
+      }
+
+      if (!product) {
+        // Try to find any product in the database to check if the issue is with the ID format
+        const sampleProduct = await prisma.product.findFirst();
+        return res.status(404).json({ 
+          error: `Product with ID "${item.productId}" not found`,
+          details: {
+            providedId: item.productId,
+            providedIdType: typeof item.productId,
+            sampleProductId: sampleProduct?.id,
+            sampleProductIdType: sampleProduct ? typeof sampleProduct.id : 'N/A'
+          },
+          suggestion: 'Please check if the product exists and the ID format is correct'
+        });
+      }
+
+      // Check if there's enough stock
+      if (product.stock < item.quantity) {
+        return res.status(400).json({ 
+          error: `Insufficient stock for product ${product.name}. Available: ${product.stock}, Requested: ${item.quantity}` 
+        });
+      }
+
+      const itemTotal = product.price * item.quantity;
+      totalAmount += itemTotal;
+
+      orderItems.push({
+        productId: item.productId,
+        quantity: item.quantity,
+        unitPrice: product.price,
+        total: itemTotal
+      });
+
+      // Calculate new stock quantity
+      const newStock = product.stock - item.quantity;
+      
+      // Update product stock and status
+      await prisma.product.update({
+        where: { id: item.productId },
+        data: { 
+          stock: newStock,
+          status: newStock === 0 ? 'out_of_stock' : 
+                 (newStock <= 10 ? 'low_stock' : 'in_stock')
+        }
+      });
+    }
+
+    // Generate order number in format ORD-YYYYMMDD-XXXX
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10).replace(/-/g, ''); // YYYYMMDD
+    const orderNumber = `ORD-${dateStr}-${Math.floor(1000 + Math.random() * 9000)}`; // Random 4-digit number
+
+    // Prepare order data
+    const orderData: any = {
+      customerId: Number(customerId),
+      status: 'pending',
+      orderDate: now,
+      orderNumber,  // Add the generated order number
+      totalAmount,
+      shippingMethod: shippingMethod || 'standard',
+      orderItems: {
+        create: orderItems.map(item => ({
+          productId: item.productId,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          totalPrice: item.total
+        }))
+      },
+      // For backward compatibility, also store items as JSON
+      items: orderItems.map(item => ({
+        productId: item.productId,
+        quantity: item.quantity,
+        price: item.unitPrice,
+        total: item.total
+      }))
+    };
+
+    // Add user ID and delivery address if they exist
+    if (!req.user || !req.user.id) {
+      console.error('No user found in request or missing user ID:', req.user);
+      return res.status(401).json({ error: 'User not properly authenticated' });
+    }
+
+    const userId = Number(req.user.id);
+    if (isNaN(userId)) {
+      console.error('Invalid user ID in token:', req.user.id);
+      return res.status(400).json({ error: 'Invalid user ID format' });
+    }
+
+    // Verify user exists in database
+    const userExists = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true }
+    });
+
+    if (!userExists) {
+      console.error('User not found in database:', userId);
+      return res.status(404).json({ error: 'User account not found' });
+    }
+    
+    orderData.userId = userId;
+
+    if (deliveryAddress) {
+      orderData.deliveryAddress = deliveryAddress;
+    }
+
+    console.log('Creating order with data:', orderData);
+
+    const order = await prisma.order.create({
+      data: orderData,
+      include: {
+        customer: true,
+        orderItems: {
+          include: {
+            product: true,
+          },
+        },
+      },
+    });
+
+    console.log('Order created successfully:', order);
+
+    // Update product stock and status
+    for (const item of orderItems) {
+      console.log(`Updating stock for product ${item.productId}, quantity: -${item.quantity}`);
+      await prisma.product.update({
+        where: { id: item.productId },
+        data: {
+          stock: { decrement: item.quantity },
+          status: item.quantity === 0 ? 'out_of_stock' : undefined,
+        },
+      });
+    }
+
+    return res.status(201).json(order);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    
+    console.error('Error in POST /api/orders:', {
+      message: errorMessage,
+      stack: errorStack,
+      requestBody: req.body,
+      headers: req.headers,
+      user: req.user
+    });
+    
+    // Check for common Prisma errors
+    if (error instanceof Error && 'code' in error) {
+      console.error('Prisma error details:', {
+        code: (error as any).code,
+        meta: (error as any).meta
+      });
+    }
+    
+    return res.status(500).json({ 
+      error: 'Internal Server Error',
+      details: process.env.NODE_ENV === 'development' ? errorMessage : 'An error occurred while processing your request'
+    });
+  }
+});
+
 // GET /api/orders
 router.get('/', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
@@ -109,6 +339,28 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response, next: Next
     });
   } catch (error) {
     next(error);
+  }
+});
+
+// GET /api/orders/new - Get new order form data
+router.get('/new', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    // Return any data needed for a new order form
+    const customers = await prisma.customer.findMany({
+      select: { id: true, name: true, email: true },
+      orderBy: { name: 'asc' }
+    });
+    
+    const products = await prisma.product.findMany({
+      where: { status: { not: 'out_of_stock' } },
+      select: { id: true, name: true, price: true, stock: true },
+      orderBy: { name: 'asc' }
+    });
+
+    return res.json({ customers, products });
+  } catch (error) {
+    console.error('Error getting new order data:', error);
+    return res.status(500).json({ error: 'Failed to get new order data' });
   }
 });
 

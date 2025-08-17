@@ -101,11 +101,32 @@ router.get('/', authenticate, async (req: AuthRequest, res, next) => {
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          name: true,
+          price: true,
+          stock: true,
+          sku: true,
+          status: true,
+          category: true
+        }
       }),
       prisma.product.count({ where }),
     ]);
 
-    res.json({
+    // Log first few products for debugging
+    console.log('Products in database (first 3):', products.slice(0, 3).map((p: { id: string; name: string; price: number; stock: number; sku: string; status: string; category: string }) => ({
+      id: p.id,
+      name: p.name,
+      price: p.price,
+      stock: p.stock,
+      sku: p.sku,
+      status: p.status,
+      category: p.category
+    })));
+
+    // Ensure consistent response format
+    const response = {
       products,
       pagination: {
         page,
@@ -113,7 +134,9 @@ router.get('/', authenticate, async (req: AuthRequest, res, next) => {
         total,
         pages: Math.ceil(total / limit),
       },
-    });
+    };
+
+    res.json(response);
   } catch (error) {
     next(error);
   }
