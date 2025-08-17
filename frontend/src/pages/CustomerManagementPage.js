@@ -231,26 +231,48 @@ export default function CustomerManagementPage() {
   const handleEditCustomer = useCallback((customer) => {
     setEditingCustomer(customer);
     
-    // Handle case where address might be an object
-    const addressData = typeof customer.address === 'object' ? customer.address : {
-      street: customer.address || '',
-      city: customer.city || '',
-      state: customer.state || '',
-      postalCode: customer.postalCode || '',
-      country: customer.country || 'USA'
+    // Safely handle address which could be null, undefined, string, or object
+    let addressData = {
+      street: '',
+      city: '',
+      state: '',
+      postalCode: '',
+      country: 'USA'
     };
 
+    if (customer) {
+      if (typeof customer.address === 'object' && customer.address !== null) {
+        // Address is an object
+        addressData = {
+          street: customer.address.street || '',
+          city: customer.address.city || '',
+          state: customer.address.state || '',
+          postalCode: customer.address.postalCode || customer.address.postal_code || '',
+          country: customer.address.country || 'USA'
+        };
+      } else if (typeof customer.address === 'string') {
+        // Address is a string
+        addressData.street = customer.address;
+      }
+
+      // Still use direct properties as fallbacks
+      if (!addressData.city) addressData.city = customer.city || '';
+      if (!addressData.state) addressData.state = customer.state || '';
+      if (!addressData.postalCode) addressData.postalCode = customer.postalCode || '';
+      if (!addressData.country || addressData.country === 'USA') addressData.country = customer.country || 'USA';
+    }
+
     setNewCustomer({
-      name: customer.name || '',
-      email: customer.email || '',
-      phone: customer.phone || '',
+      name: customer?.name || '',
+      email: customer?.email || '',
+      phone: customer?.phone || '',
       address: addressData.street || '',
       city: addressData.city || '',
       state: addressData.state || '',
-      postalCode: addressData.postalCode || addressData.postal_code || '',
+      postalCode: addressData.postalCode || '',
       country: addressData.country || 'USA',
-      notes: customer.notes || '',
-      status: customer.status || 'active'
+      notes: customer?.notes || '',
+      status: customer?.status || 'active'
     });
     setShowAddDialog(true);
     handleMenuClose();
@@ -311,8 +333,8 @@ const handleSubmit = async (e) => {
   
   // Validation
   const errors = {};
-  if (!newCustomer.name.trim()) errors.name = 'Name is required';
-  if (!newCustomer.email.trim()) {
+  if (!newCustomer.name?.trim()) errors.name = 'Name is required';
+  if (!newCustomer.email?.trim()) {
     errors.email = 'Email is required';
   } else if (!/\S+@\S+\.\S+/.test(newCustomer.email)) {
     errors.email = 'Email is invalid';
@@ -326,20 +348,18 @@ const handleSubmit = async (e) => {
   try {
     setLoading(true);
     
-    // Prepare customer data with address as an object
+    // Prepare customer data with address fields at the root level
     const customerData = {
-      name: newCustomer.name,
-      email: newCustomer.email,
-      phone: newCustomer.phone || null,
-      address: {
-        street: newCustomer.address || '',
-        city: newCustomer.city || '',
-        state: newCustomer.state || '',
-        postalCode: newCustomer.postalCode || '',
-        country: newCustomer.country || 'USA'
-      },
-      notes: newCustomer.notes || null,
-      status: newCustomer.status || 'active'
+      name: newCustomer.name?.trim() || '',
+      email: newCustomer.email?.trim() || '',
+      phone: newCustomer.phone?.trim() || null,
+      street: newCustomer.address?.trim() || '',
+      city: newCustomer.city?.trim() || '',
+      state: newCustomer.state?.trim() || '',
+      postalCode: newCustomer.postalCode?.trim() || '',
+      country: newCustomer.country?.trim() || 'USA',
+      status: newCustomer.status || 'active',
+      notes: newCustomer.notes || ''
     };
 
     if (editingCustomer) {
@@ -381,9 +401,28 @@ const handleSubmit = async (e) => {
     fetchData();
   } catch (error) {
     console.error('Error saving customer:', error);
+    
+    // Extract error message from different possible locations in the error object
+    let errorMessage = 'Failed to save customer';
+    
+    if (error.response) {
+      // The request was made and the server responded with a status code
+      // that falls out of the range of 2xx
+      errorMessage = error.response.data?.message || 
+                   error.response.data?.error || 
+                   error.response.statusText || 
+                   `Server responded with status ${error.response.status}`;
+    } else if (error.request) {
+      // The request was made but no response was received
+      errorMessage = 'No response from server. Please check your connection.';
+    } else if (error.message) {
+      // Something happened in setting up the request that triggered an Error
+      errorMessage = error.message;
+    }
+    
     setSnackbar({
       open: true,
-      message: error.response?.data?.message || 'Failed to save customer',
+      message: errorMessage,
       severity: 'error'
     });
   } finally {
@@ -406,54 +445,27 @@ const handleStatusFilterChange = useCallback((event) => {
   }, []);
 
   // Calculate paginated customers
-  const paginatedCustomers = useMemo(() =>
-    filteredCustomers.slice(page * pageSize, (page + 1) * pageSize),
+  const paginatedCustomers = useMemo(
+    () => filteredCustomers.slice(page * pageSize, (page + 1) * pageSize),
     [filteredCustomers, page, pageSize]
   );
 
   const totalPages = Math.ceil(filteredCustomers.length / pageSize);
 
   return (
-    <Container maxWidth="xl" sx={{ py: 4 }}>
+    <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
         <Typography variant="h4" component="h1">
           Customer Management
         </Typography>
-        <Box display="flex" gap={2}>
-          <Button
-            variant="outlined"
-            startIcon={<Download />}
-            onClick={() => {
-              setSnackbar({
-                open: true,
-                message: 'Export functionality coming soon',
-                severity: 'info'
-              });
-            }}
-          >
-            Export
-          </Button>
-          <Button
-            variant="contained"
-            color="primary"
-            startIcon={<Add />}
-            onClick={() => {
-              setNewCustomer({
-                name: '',
-                email: '',
-                phone: '',
-                address: '',
-                notes: '',
-                status: 'active'
-              });
-              setEditingCustomer(null);
-              setFormErrors({ name: '', email: '', phone: '' });
-              setShowAddDialog(true);
-            }}
-          >
-            Add Customer
-          </Button>
-        </Box>
+        <Button
+          variant="contained"
+          color="primary"
+          startIcon={<Add />}
+          onClick={() => setShowAddDialog(true)}
+        >
+          Add Customer
+        </Button>
       </Box>
 
       {/* Search and Filter Card */}
@@ -693,6 +705,10 @@ const handleStatusFilterChange = useCallback((event) => {
             email: '',
             phone: '',
             address: '',
+            city: '',
+            state: '',
+            postalCode: '',
+            country: 'USA',
             notes: '',
             status: 'active'
           });
@@ -730,13 +746,16 @@ const handleStatusFilterChange = useCallback((event) => {
               />
               <TextField
                 name="phone"
-                label="Phone Number"
+                label="Phone"
                 value={newCustomer.phone}
                 onChange={handleInputChange}
                 fullWidth
                 error={!!formErrors.phone}
                 helperText={formErrors.phone}
               />
+              <Typography variant="subtitle2" color="textSecondary">
+                Address
+              </Typography>
               <Grid container spacing={2}>
                 <Grid item xs={12}>
                   <TextField
@@ -898,7 +917,7 @@ const handleStatusFilterChange = useCallback((event) => {
 
             <DialogContent>
               <Grid container spacing={3}>
-                <Grid item xs={12} md={6}>
+                <Grid item xs={12} md={8}>
                   <Card>
                     <CardContent>
                       <Typography variant="h6" gutterBottom>Contact Information</Typography>
@@ -928,35 +947,16 @@ const handleStatusFilterChange = useCallback((event) => {
                             </Typography>
                           </Box>
                         </Box>
+                        <ShoppingCart sx={{ fontSize: 40, color: 'primary.main', mb: 1 }} />
+                        <Typography variant="h4">{selectedCustomer.totalOrders || 0}</Typography>
+                        <Typography variant="body2" color="text.secondary">Total Orders</Typography>
                       </Box>
-                      {selectedCustomer.notes && (
-                        <Box>
-                          <Typography variant="subtitle2" gutterBottom>Notes</Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            {selectedCustomer.notes}
-                          </Typography>
-                        </Box>
-                      )}
-                    </CardContent>
-                  </Card>
-                </Grid>
-
-                <Grid item xs={12} md={6}>
-                  <Card>
-                    <CardContent>
-                      <Typography variant="h6" gutterBottom>Order Statistics</Typography>
-                      <Grid container spacing={2}>
-                        <Grid item xs={6}>
-                          <Box textAlign="center" p={2}>
-                            <ShoppingCart sx={{ fontSize: 40, color: 'primary.main', mb: 1 }} />
-                            <Typography variant="h4">{selectedCustomer.totalOrders || 0}</Typography>
-                            <Typography variant="body2" color="text.secondary">Total Orders</Typography>
-                          </Box>
-                        </Grid>
+                      
+                      <Grid container spacing={2} mt={2}>
                         <Grid item xs={6}>
                           <Box textAlign="center" p={2}>
                             <Typography variant="h4" color="success.main">
-                              {formatCurrency(selectedCustomer.totalSpent)}
+                              {formatCurrency(selectedCustomer.totalSpent || 0)}
                             </Typography>
                             <Typography variant="body2" color="text.secondary">Total Spent</Typography>
                           </Box>
@@ -964,7 +964,7 @@ const handleStatusFilterChange = useCallback((event) => {
                         <Grid item xs={6}>
                           <Box textAlign="center" p={2}>
                             <Typography variant="h5">
-                              {formatCurrency(selectedCustomer.avgOrderValue)}
+                              {formatCurrency(selectedCustomer.avgOrderValue || 0)}
                             </Typography>
                             <Typography variant="body2" color="text.secondary">Avg Order Value</Typography>
                           </Box>
@@ -972,7 +972,7 @@ const handleStatusFilterChange = useCallback((event) => {
                         <Grid item xs={6}>
                           <Box textAlign="center" p={2}>
                             <Typography variant="h6">
-                              {safeFormatDate(selectedCustomer.lastOrderDate)}
+                              {safeFormatDate(selectedCustomer.lastOrderDate) || 'N/A'}
                             </Typography>
                             <Typography variant="body2" color="text.secondary">Last Order</Typography>
                           </Box>

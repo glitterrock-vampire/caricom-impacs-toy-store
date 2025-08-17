@@ -27,15 +27,37 @@ const calculateCustomerStats = (orders) => {
     };
   }
 
-  // Calculate total spent - handle different field names
+  // Calculate total spent - handle different field names and structures
   const totalSpent = orders.reduce((sum, order) => {
-    const amount = parseFloat(
-      order.totalAmount || 
-      order.total_amount || 
-      order.amount || 
-      order.total || 
-      0
-    );
+    // Try to get amount from different possible locations
+    let amount = 0;
+    
+    // Check for direct amount fields
+    if (order.totalAmount !== undefined) {
+      amount = parseFloat(order.totalAmount);
+    } else if (order.total_amount !== undefined) {
+      amount = parseFloat(order.total_amount);
+    } else if (order.amount !== undefined) {
+      amount = parseFloat(order.amount);
+    } else if (order.total !== undefined) {
+      amount = parseFloat(order.total);
+    }
+    
+    // If amount is still 0 or invalid, try to calculate from items
+    if (isNaN(amount) || amount <= 0) {
+      if (order.items && Array.isArray(order.items)) {
+        amount = order.items.reduce((itemSum, item) => {
+          const itemTotal = (item.total || (item.quantity * (item.unitPrice || item.price || 0)));
+          return itemSum + (isNaN(itemTotal) ? 0 : parseFloat(itemTotal));
+        }, 0);
+      } else if (order.orderItems && Array.isArray(order.orderItems)) {
+        amount = order.orderItems.reduce((itemSum, item) => {
+          const itemTotal = (item.totalPrice || (item.quantity * (item.unitPrice || item.price || 0)));
+          return itemSum + (isNaN(itemTotal) ? 0 : parseFloat(itemTotal));
+        }, 0);
+      }
+    }
+    
     return sum + (isNaN(amount) ? 0 : amount);
   }, 0);
 
@@ -233,13 +255,28 @@ export const customerService = {
    */
   async updateCustomer(id, customerData) {
     try {
-      // Remove password from update data as it's not needed for updates
-      const { password, ...updateData } = customerData;
+      // Remove password and notes from update data as they're not needed for updates
+      const { password, notes, ...updateData } = customerData;
+      
+      console.log('Sending update for customer ID:', id);
+      console.log('Update data:', JSON.stringify(updateData, null, 2));
+      
       const response = await api.put(`/api/customers/${id}`, updateData);
       
       // After update, fetch the full customer with orders to recalculate stats
       return await this.getCustomerById(id);
     } catch (error) {
+      console.error('Update customer error details:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        config: {
+          url: error.config?.url,
+          method: error.config?.method,
+          data: error.config?.data
+        }
+      });
+      
       const message = formatErrorMessage(error, `Failed to update customer with ID: ${id}`);
       throw new Error(message);
     }
