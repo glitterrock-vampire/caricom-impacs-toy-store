@@ -26,3 +26,9 @@ npm run server
 npm run client
 npm run build
 ```
+
+## Vercel
+
+This app includes `vercel.json` and `api/index.js` so Vercel can deploy the Vite frontend and route `/api/*` requests to the Express API as a Vercel Function.
+
+SQLite on Vercel uses `/tmp/app.sqlite`, which is suitable for demo/runtime seeding but not durable production writes. For production persistence, attach a hosted SQL database and set the API to use that connection.

@@ -318,7 +318,11 @@ app.use((error, _req, res, _next) => {
   res.status(error.status ?? 500).json({ error: error.message ?? "Unexpected server error" });
 });
 
-app.listen(port, "127.0.0.1", () => {
-  console.log(`API listening on http://127.0.0.1:${port}`);
-  console.log(`SQLite database: ${dbPath}`);
-});
+if (!process.env.VERCEL) {
+  app.listen(port, "127.0.0.1", () => {
+    console.log(`API listening on http://127.0.0.1:${port}`);
+    console.log(`SQLite database: ${dbPath}`);
+  });
+}
+
+export default app;

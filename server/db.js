@@ -6,7 +6,8 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
 const dataDir = path.join(projectRoot, "data");
-const dbPath = process.env.SQLITE_DB_PATH ?? path.join(dataDir, "app.sqlite");
+const defaultDbPath = process.env.VERCEL ? path.join("/tmp", "app.sqlite") : path.join(dataDir, "app.sqlite");
+const dbPath = process.env.SQLITE_DB_PATH ?? defaultDbPath;
 
 fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
